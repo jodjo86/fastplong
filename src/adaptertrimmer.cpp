@@ -58,6 +58,9 @@ int AdapterTrimmer::trimByMultiSequences(Read* r, FilterResult* fr, vector<strin
 
 int AdapterTrimmer::searchAdapter(string *read, const string &adapter, double edMax, int searchStart, int searchLen, bool asLeftAsPossible, bool asRightAsPossible)
 {
+    if(adapter.empty())
+        return -1;
+
     namespace hn = hwy::HWY_NAMESPACE;
     hn::ScalableTag<uint8_t> d8;
     const size_t N = hn::Lanes(d8);
@@ -300,4 +303,3 @@ int AdapterTrimmer::trimBySequenceEnd(Read* r, FilterResult* fr, string& adapter
     }
     return 0;
 }
-

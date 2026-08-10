@@ -268,9 +268,13 @@ int main(int argc, char* argv[]){
 
     // using evaluator to guess how many reads in total
     if(opt.shallDetectAdapter()) {
-        if(!supportEvaluation)
+        if(!supportEvaluation) {
             cerr << "Adapter auto-detection is disabled for STDIN mode" << endl;
-        else {
+            if(opt.adapter.sequenceStart == "auto")
+                opt.adapter.sequenceStart = "";
+            if(opt.adapter.sequenceEnd == "auto")
+                opt.adapter.sequenceEnd = "";
+        } else {
             eva.evalAdapterAndReadNum(&opt, readNum);
             cerr << endl;
         }

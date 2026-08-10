@@ -66,10 +66,18 @@ void Options::loadFastaAdapters() {
 }
 
 bool Options::validate() {
+    if(inputFromSTDIN) {
+        if(!in.empty() && in != "/dev/stdin") {
+            cerr << "In STDIN mode, ignore the input filename " << in << endl;
+        }
+        in = "/dev/stdin";
+    }
+
     if(in.empty()) {
         error_exit("read input should be specified by --in, or enable --stdin if you want to read STDIN");
     } else {
-        check_file_valid(in);
+        if(in != "/dev/stdin")
+            check_file_valid(in);
     }
 
     if(outputToSTDOUT) {
