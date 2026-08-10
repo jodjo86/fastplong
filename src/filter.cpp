@@ -17,10 +17,11 @@ int Filter::passFilter(Read* r) {
     int rlen = r->length();
     int lowQualNum = 0;
     int nBaseNum = 0;
+    int gcNum = 0;
     int totalQual = 0;
 
-    // need to recalculate lowQualNum and nBaseNum if the corresponding filters are enabled
-    if(mOptions->qualfilter.enabled || mOptions->lengthFilter.enabled) {
+    // need to recalculate read-level metrics if the corresponding filters are enabled
+    if(mOptions->qualfilter.enabled || mOptions->gcContentFilter.enabled) {
         const char* seqstr = r->mSeq->c_str();
         const char* qualstr = r->mQuality->c_str();
 
@@ -35,6 +36,9 @@ int Filter::passFilter(Read* r) {
 
             if(base == 'N')
                 nBaseNum++;
+
+            if(base == 'G' || base == 'C' || base == 'g' || base == 'c')
+                gcNum++;
         }
     }
 
@@ -54,6 +58,12 @@ int Filter::passFilter(Read* r) {
             return FAIL_LENGTH;
         if(mOptions->lengthFilter.maxLength > 0 && rlen > mOptions->lengthFilter.maxLength)
             return FAIL_TOO_LONG;
+    }
+
+    if(mOptions->gcContentFilter.enabled) {
+        double gcContent = gcNum * 100.0 / rlen;
+        if(gcContent < mOptions->gcContentFilter.min || gcContent > mOptions->gcContentFilter.max)
+            return FAIL_GC_CONTENT;
     }
 
     if(mOptions->complexityFilter.enabled) {
@@ -248,4 +258,3 @@ bool Filter::match(vector<string>& list, string target, int threshold) {
     }
     return false;
 }
-

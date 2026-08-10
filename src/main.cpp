@@ -89,6 +89,10 @@ int main(int argc, char* argv[]){
     cmd.add("low_complexity_filter", 'y', "enable low complexity filter. The complexity is defined as the percentage of base that is different from its next base (base[i] != base[i+1]).");
     cmd.add<int>("complexity_threshold", 'Y', "the threshold for low complexity filter (0~100). Default is 30, which means 30% complexity is required.", false, 30);
 
+    // GC content filtering
+    cmd.add<double>("min_gc", 0, "the minimum GC content percentage allowed for each read (0~100). Default 0 means no minimum GC requirement.", false, 0.0);
+    cmd.add<double>("max_gc", 0, "the maximum GC content percentage allowed for each read (0~100). Default 100 means no maximum GC requirement.", false, 100.0);
+
     // reporting
     cmd.add<string>("json", 'j', "the json format report file name", false, "fastplong.json");
     cmd.add<string>("html", 'h', "the html format report file name", false, "fastplong.html");
@@ -203,6 +207,11 @@ int main(int argc, char* argv[]){
     // low complexity filter
     opt.complexityFilter.enabled = cmd.exist("low_complexity_filter");
     opt.complexityFilter.threshold = (min(100, max(0, cmd.get<int>("complexity_threshold")))) / 100.0;
+
+    // GC content filter
+    opt.gcContentFilter.min = cmd.get<double>("min_gc");
+    opt.gcContentFilter.max = cmd.get<double>("max_gc");
+    opt.gcContentFilter.enabled = cmd.exist("min_gc") || cmd.exist("max_gc");
 
     // N masking by quality
     opt.mask.enabled = cmd.exist("mask");

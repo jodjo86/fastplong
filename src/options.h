@@ -54,6 +54,19 @@ public:
     double threshold;
 };
 
+class GCContentFilteringOptions {
+public:
+    GCContentFilteringOptions() {
+        enabled = false;
+        min = 0.0;
+        max = 100.0;
+    }
+public:
+    bool enabled;
+    double min;
+    double max;
+};
+
 
 class PolyXTrimmerOptions {
 public:
@@ -254,6 +267,8 @@ public:
     PolyXTrimmerOptions polyXTrim;
     // low complexity filtering
     LowComplexityFilterOptions complexityFilter;
+    // GC content filtering
+    GCContentFilteringOptions gcContentFilter;
     // N masking by quality
     MaskOptions mask;
     // break reads into high-quality fragments, and discard low-quality fragments

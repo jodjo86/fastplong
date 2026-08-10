@@ -47,6 +47,7 @@ static const int FAIL_N_BASE = 12;
 static const int FAIL_LENGTH = 16;
 static const int FAIL_TOO_LONG = 17;
 static const int FAIL_QUALITY = 20;
+static const int FAIL_GC_CONTENT = 21;
 static const int FAIL_COMPLEXITY = 24;
 
 // how many types in total we support
@@ -58,7 +59,7 @@ const static char* FAILED_TYPES[FILTER_RESULT_TYPES] = {
 	"failed_bad_overlap", "", "", "",
 	"failed_too_many_n_bases", "", "", "",
 	"failed_too_short", "failed_too_long", "", "",
-	"failed_quality_filter", "", "", "",
+	"failed_quality_filter", "failed_gc_content_filter", "", "",
 	"failed_low_complexity", "", "", "",
 	"", "", "", ""
 };

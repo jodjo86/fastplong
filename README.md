@@ -130,6 +130,11 @@ To filter reads by its percentage of unqualified bases, two options should be pr
 You can also filter reads by its average quality score
 * `-m, --mean_qual`   if one read's average quality score <avg_qual, then this read is discarded. Default 0 means no requirement (int [=0])
 
+You can filter reads by GC content percentage with `--min_gc` and `--max_gc`. The GC content is calculated as `(G + C) / read length * 100`. Both limits are disabled by default (`--min_gc 0 --max_gc 100`).
+```shell
+fastplong -i in.fq -o out.fq --min_gc 30 --max_gc 70
+```
+
 ## length filter
 Length filtering is enabled by default, but you can disable it by `-L` or `--disable_length_filtering`. The minimum length requirement is specified with `-l` or `--length_required`.
 
@@ -266,6 +271,8 @@ options:
       --n_base_limit                 if number of N base is >n_base_limit, then this read is discarded (0~1000000). 0 means no N allowed, default 1000000 means no N limit (int [=1000000])
   -n, --n_percent_limit              if one read's N base percentage is >n_percent_limit, then this read is discarded (0~100). Default 10 means 10% (int [=10])
   -m, --mean_qual                    if one read's mean_qual quality score <mean_qual, then this read is discarded. Default 0 means no requirement (int [=0])
+      --min_gc                       the minimum GC content percentage allowed for each read (0~100). Default 0 means no minimum GC requirement. (double [=0])
+      --max_gc                       the maximum GC content percentage allowed for each read (0~100). Default 100 means no maximum GC requirement. (double [=100])
   -L, --disable_length_filtering     length filtering is enabled by default. If this option is specified, length filtering is disabled
   -l, --length_required              reads shorter than length_required will be discarded, default is 20. (int [=20])
       --length_limit                 reads longer than length_limit will be discarded, default 0 means no limitation. (int [=0])
@@ -284,5 +291,4 @@ options:
 # citations
 ### Shifu Chen. 2023. Ultrafast one-pass FASTQ data preprocessing, quality control, and deduplication using fastp. iMeta 2: e107. https://doi.org/10.1002/imt2.107
 ### Shifu Chen, Yanqing Zhou, Yaru Chen, Jia Gu; fastp: an ultra-fast all-in-one FASTQ preprocessor, Bioinformatics, Volume 34, Issue 17, 1 September 2018, Pages i884–i890, https://doi.org/10.1093/bioinformatics/bty560
-
 

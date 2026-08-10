@@ -153,6 +153,15 @@ bool Options::validate() {
     if(qualfilter.nBaseLimit < 0 or qualfilter.nBaseLimit > 1000000)
         error_exit("N base number limit (--n_base_limit) should be 0 ~ 1000000");
 
+    if(gcContentFilter.min < 0.0 || gcContentFilter.min > 100.0)
+        error_exit("minimum GC content (--min_gc) should be 0 ~ 100");
+
+    if(gcContentFilter.max < 0.0 || gcContentFilter.max > 100.0)
+        error_exit("maximum GC content (--max_gc) should be 0 ~ 100");
+
+    if(gcContentFilter.min > gcContentFilter.max)
+        error_exit("minimum GC content (--min_gc) should be <= maximum GC content (--max_gc)");
+
     if(lengthFilter.requiredLength < 0 )
         error_exit("length requirement (--length_required) should be >0, suggest >50");
 

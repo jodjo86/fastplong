@@ -99,6 +99,9 @@ void FilterResult::print() {
     cerr <<  "reads passed filter: " << mFilterReadStats[PASS_FILTER] << endl;
     cerr <<  "reads failed due to low quality: " << mFilterReadStats[FAIL_QUALITY] << endl;
     cerr <<  "reads failed due to too many N: " << mFilterReadStats[FAIL_N_BASE] << endl;
+    if(mOptions->gcContentFilter.enabled) {
+        cerr <<  "reads failed due to GC content: " << mFilterReadStats[FAIL_GC_CONTENT] << endl;
+    }
     if(mOptions->lengthFilter.enabled) {
         cerr <<  "reads failed due to too short: " << mFilterReadStats[FAIL_LENGTH] << endl;
         if(mOptions->lengthFilter.maxLength > 0)
@@ -123,6 +126,8 @@ void FilterResult::reportJson(ofstream& ofs, string padding) {
     ofs << padding << "\t" << "\"passed_filter_reads\": " << mFilterReadStats[PASS_FILTER] << "," << endl;
     ofs << padding << "\t" << "\"low_quality_reads\": " << mFilterReadStats[FAIL_QUALITY] << "," << endl;
     ofs << padding << "\t" << "\"too_many_N_reads\": " << mFilterReadStats[FAIL_N_BASE] << "," << endl;
+    if(mOptions->gcContentFilter.enabled)
+        ofs << padding << "\t" << "\"gc_content_filtered_reads\": " << mFilterReadStats[FAIL_GC_CONTENT] << "," << endl;
     if(mOptions->complexityFilter.enabled)
         ofs << padding << "\t" << "\"low_complexity_reads\": " << mFilterReadStats[FAIL_COMPLEXITY] << "," << endl;
     ofs << padding << "\t" << "\"too_short_reads\": " << mFilterReadStats[FAIL_LENGTH] << "," << endl;
@@ -231,6 +236,8 @@ void FilterResult::reportHtml(ofstream& ofs, long totalReads, long totalBases) {
 
     HtmlReporter::outputRow(ofs, "reads with low quality:", HtmlReporter::formatNumber(mFilterReadStats[FAIL_QUALITY]) + " (" + to_string(mFilterReadStats[FAIL_QUALITY] * 100.0 / total) + "%)");
     HtmlReporter::outputRow(ofs, "reads with too many N:", HtmlReporter::formatNumber(mFilterReadStats[FAIL_N_BASE]) + " (" + to_string(mFilterReadStats[FAIL_N_BASE] * 100.0 / total) + "%)");
+    if(mOptions->gcContentFilter.enabled)
+        HtmlReporter::outputRow(ofs, "reads with bad GC content:", HtmlReporter::formatNumber(mFilterReadStats[FAIL_GC_CONTENT]) + " (" + to_string(mFilterReadStats[FAIL_GC_CONTENT] * 100.0 / total) + "%)");
     if(mOptions->lengthFilter.enabled) {
         HtmlReporter::outputRow(ofs, "reads too short:", HtmlReporter::formatNumber(mFilterReadStats[FAIL_LENGTH]) + " (" + to_string(mFilterReadStats[FAIL_LENGTH] * 100.0 / total) + "%)");
         if(mOptions->lengthFilter.maxLength > 0)
