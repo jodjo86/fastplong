@@ -9,9 +9,9 @@ Processor::Processor(Options* opt){
 Processor::~Processor(){
 }
 
-bool Processor::process() {
+bool Processor::process(ProcessingResult* result) {
     SingleEndProcessor p(mOptions);
-    p.process();
+    p.process(result);
 
     return true;
 }

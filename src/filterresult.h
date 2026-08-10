@@ -36,6 +36,9 @@ public:
     void addAdapterTrimmed(string adapter);
     void addReadTrimmed(int bases);
     void addPolyXTrimmed(int base, int length);
+    void addSamplingDropped(int bases);
+    long getSamplingDroppedReads() {return mSamplingDroppedReads;}
+    long getSamplingDroppedBases() {return mSamplingDroppedBases;}
     long getTotalPolyXTrimmedReads();
     long getTotalPolyXTrimmedBases();
     // a part of JSON report
@@ -58,6 +61,8 @@ private:
     long mFilterReadStats[FILTER_RESULT_TYPES];
     long mTrimmedAdapterRead;
     long mTrimmedAdapterBases;
+    long mSamplingDroppedReads;
+    long mSamplingDroppedBases;
     long mTrimmedPolyXReads[4] = {0};
     long mTrimmedPolyXBases[4] = {0};
     map<string, long, classcomp> mAdapter;

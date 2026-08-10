@@ -105,6 +105,14 @@ Specify input by `-i` or `--in`, and specify output by `-o` or `--out`.
 * if one read failed and is written to `--failed_out`, its `failure reason` will be appended to its read name. For example, `failed_quality_filter`, `failed_too_short` etc.
 ## process only part of the data
 If you don't want to process all the data, you can specify `--reads_to_process` to limit the reads to be processed. This is useful if you want to have a fast preview of the data quality, or you want to create a subset of the filtered data.
+## sample the output data
+`fastplong` can sample reads after trimming and filtering. This is useful when you want a reproducible subset or want to limit the final clean data yield.
+* specify `--sample_rate` to randomly keep a fraction of reads after filtering. For example, `--sample_rate 0.25` keeps about 25% of clean reads.
+* specify `--target_bases` to approximately target a final number of clean bases. `fastplong` first processes the input once without writing output to estimate the total clean bases after filtering, calculates the sampling rate, and then processes the input again to write the sampled output.
+* `--target_bases` and `--sample_rate` cannot be specified together.
+* specify `--seed` to make sampling reproducible. The same input, options, and seed produce the same sampled reads.
+* `--target_bases` is not supported with `--stdin` because it needs to read the input twice.
+* output sampling cannot be used together with output splitting.
 ## do not overwrite exiting files
 You can enable the option `--dont_overwrite` to protect the existing files not to be overwritten by `fastplong`. In this case, `fastplong` will report an error and quit if it finds any of the output files (read, json report, html report) already exists before.
 ## split the output to multiple files for parallel processing
@@ -241,6 +249,9 @@ options:
       --reads_to_process             specify how many reads/pairs to be processed. Default 0 means process all reads. (int [=0])
       --dont_overwrite               don't overwrite existing files. Overwritting is allowed by default.
   -V, --verbose                      output verbose log information (i.e. when every 1M reads are processed).
+      --target_bases                 approximately target this number of bases to output after filtering. This option reads the input twice and cannot be used with --sample_rate or output splitting. (long [=0])
+      --sample_rate                  randomly keep this fraction of reads after filtering (0.0~1.0). This option cannot be used with --target_bases. (double [=1])
+      --seed                         seed for reproducible output sampling. (unsigned long [=1])
   -A, --disable_adapter_trimming     adapter trimming is enabled by default. If this option is specified, adapter trimming is disabled
   -s, --start_adapter                the adapter sequence at read start (5'). (string [=auto])
   -e, --end_adapter                  the adapter sequence at read end (3'). (string [=auto])
@@ -291,4 +302,3 @@ options:
 # citations
 ### Shifu Chen. 2023. Ultrafast one-pass FASTQ data preprocessing, quality control, and deduplication using fastp. iMeta 2: e107. https://doi.org/10.1002/imt2.107
 ### Shifu Chen, Yanqing Zhou, Yaru Chen, Jia Gu; fastp: an ultra-fast all-in-one FASTQ preprocessor, Bioinformatics, Volume 34, Issue 17, 1 September 2018, Pages i884–i890, https://doi.org/10.1093/bioinformatics/bty560
-

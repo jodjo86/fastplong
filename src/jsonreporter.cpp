@@ -57,6 +57,18 @@ void JsonReporter::report(FilterResult* result, Stats* preStats1, Stats* postSta
     ofs << "\t\t\t" << "\"read_mean_length\":" << postStats1->getMeanLength() << "," << endl;
     ofs << "\t\t\t" << "\"gc_content\":" << (post_total_bases == 0?0.0:(double)post_total_gc / (double)post_total_bases)  << endl; 
     ofs << "\t\t" << "}";
+    if(mOptions->sampling.enabled) {
+        long clean_reads_before_sampling = post_total_reads + (result ? result->getSamplingDroppedReads() : 0);
+        long clean_bases_before_sampling = post_total_bases + (result ? result->getSamplingDroppedBases() : 0);
+        ofs << "," << endl;
+        ofs << "\t\t" << "\"sampling\": {" << endl;
+        ofs << "\t\t\t" << "\"target_bases\":" << (mOptions->sampling.targetBasesSpecified ? mOptions->sampling.targetBases : 0) << "," << endl;
+        ofs << "\t\t\t" << "\"sample_rate\":" << mOptions->sampling.sampleRate << "," << endl;
+        ofs << "\t\t\t" << "\"seed\":" << mOptions->sampling.seed << "," << endl;
+        ofs << "\t\t\t" << "\"clean_reads_before_sampling\":" << clean_reads_before_sampling << "," << endl;
+        ofs << "\t\t\t" << "\"clean_bases_before_sampling\":" << clean_bases_before_sampling << endl;
+        ofs << "\t\t" << "}";
+    }
 
     ofs << endl;
 

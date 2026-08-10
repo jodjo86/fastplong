@@ -125,6 +125,21 @@ bool Options::validate() {
     if(readsToProcess < 0)
         error_exit("the number of reads to process (--reads_to_process) cannot be negative");
 
+    if(sampling.sampleRateSpecified && sampling.targetBasesSpecified)
+        error_exit("--sample_rate and --target_bases cannot be specified together");
+
+    if(sampling.sampleRate < 0.0 || sampling.sampleRate > 1.0)
+        error_exit("sampling rate (--sample_rate) should be between 0.0 and 1.0");
+
+    if(sampling.targetBasesSpecified && sampling.targetBases <= 0)
+        error_exit("target bases (--target_bases) should be greater than 0");
+
+    if(sampling.targetBasesSpecified && in == "/dev/stdin")
+        error_exit("--target_bases is not supported in STDIN mode since it needs to read the input twice");
+
+    if(sampling.enabled && split.enabled)
+        error_exit("output sampling cannot work with output splitting mode");
+
     if(thread < 1) {
         thread = 1;
     } else if(thread > 16) {

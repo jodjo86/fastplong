@@ -5,6 +5,7 @@
 #include <functional>
 #include <thread>
 #include <memory.h>
+#include <stdint.h>
 #include "util.h"
 #include "jsonreporter.h"
 #include "htmlreporter.h"
@@ -35,6 +36,8 @@ SingleEndProcessor::~SingleEndProcessor() {
 }
 
 void SingleEndProcessor::initOutput() {
+    if(mOptions->sampling.evaluating)
+        return;
     if(!mOptions->failedOut.empty())
         mFailedWriter = new WriterThread(mOptions, mOptions->failedOut);
     if(mOptions->out.empty() && !mOptions->outputToSTDOUT)
@@ -62,7 +65,7 @@ void SingleEndProcessor::initConfig(ThreadConfig* config) {
     }
 }
 
-bool SingleEndProcessor::process(){
+bool SingleEndProcessor::process(ProcessingResult* result){
     if(!mOptions->split.enabled)
         initOutput();
 
@@ -120,30 +123,39 @@ bool SingleEndProcessor::process(){
     finalPostStats->calcLengthHistogram();
     FilterResult* finalFilterResult = FilterResult::merge(filterResults);
 
+    if(result) {
+        result->beforeFilteringReads = finalPreStats->getReads();
+        result->beforeFilteringBases = finalPreStats->getBases();
+        result->afterFilteringReads = finalPostStats->getReads();
+        result->afterFilteringBases = finalPostStats->getBases();
+    }
+
     // read filter results to the first thread's
     for(int t=1; t<mOptions->thread; t++){
         preStats.push_back(configs[t]->getPreStats1());
         postStats.push_back(configs[t]->getPostStats1());
     }
 
-    cerr << "Before filtering:"<<endl;
-    finalPreStats->print();
-    cerr << endl;
-    cerr << "After filtering:"<<endl;
-    finalPostStats->print();
+    if(!mOptions->sampling.evaluating) {
+        cerr << "Before filtering:"<<endl;
+        finalPreStats->print();
+        cerr << endl;
+        cerr << "After filtering:"<<endl;
+        finalPostStats->print();
 
-    cerr << endl;
-    cerr << "Filtering result:"<<endl;
-    finalFilterResult->print();
+        cerr << endl;
+        cerr << "Filtering result:"<<endl;
+        finalFilterResult->print();
 
 
-    // make JSON report
-    JsonReporter jr(mOptions);
-    jr.report(finalFilterResult, finalPreStats, finalPostStats);
+        // make JSON report
+        JsonReporter jr(mOptions);
+        jr.report(finalFilterResult, finalPreStats, finalPostStats);
 
-    // make HTML report
-    HtmlReporter hr(mOptions);
-    hr.report(finalFilterResult, finalPreStats, finalPostStats);
+        // make HTML report
+        HtmlReporter hr(mOptions);
+        hr.report(finalFilterResult, finalPreStats, finalPostStats);
+    }
 
     // clean up
     for(int t=0; t<mOptions->thread; t++){
@@ -177,6 +189,34 @@ void SingleEndProcessor::recycleToPool(int tid, Read* r) {
         delete r;
 }
 
+bool SingleEndProcessor::shallKeepBySampling(Read* r) {
+    if(!mOptions->sampling.enabled || mOptions->sampling.evaluating)
+        return true;
+    if(mOptions->sampling.sampleRate >= 1.0)
+        return true;
+    if(mOptions->sampling.sampleRate <= 0.0)
+        return false;
+
+    uint64_t h = 1469598103934665603ULL ^ (uint64_t)mOptions->sampling.seed;
+    const uint64_t prime = 1099511628211ULL;
+    const string* name = r->mName;
+    const string* seq = r->mSeq;
+    for(size_t i=0; i<name->size(); i++) {
+        h ^= (unsigned char)(*name)[i];
+        h *= prime;
+    }
+    h ^= 0xff;
+    h *= prime;
+    for(size_t i=0; i<seq->size(); i++) {
+        h ^= (unsigned char)(*seq)[i];
+        h *= prime;
+    }
+
+    double fraction = (h >> 11) * (1.0 / 9007199254740992.0);
+    return fraction < mOptions->sampling.sampleRate;
+}
+
+template<bool samplingEnabled>
 bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
     string* outstr = new string();
     string* failedOut = new string();
@@ -262,26 +302,56 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
         }
 
         bool passed = false;
-        for(int i=0; i<outReads.size(); i++) {
+        if(!samplingEnabled) {
+            for(int i=0; i<outReads.size(); i++) {
 
-            Read* outr = outReads[i];
-            int result = mFilter->passFilter(outr);
+                Read* outr = outReads[i];
+                int result = mFilter->passFilter(outr);
 
-            config->addFilterResult(result, 1);
+                config->addFilterResult(result, 1);
 
-            if( outr != NULL &&  result == PASS_FILTER) {
-                outr->appendToString(outstr);
+                if( outr != NULL &&  result == PASS_FILTER) {
+                    outr->appendToString(outstr);
 
-                passed = true;
-                // stats the read after filtering
-                config->getPostStats1()->statRead(outr);
-            } else if(mFailedWriter && outReads.size() == 1) {
-                or1->appendToStringWithTag(failedOut, FAILED_TYPES[result]);
+                    passed = true;
+                    // stats the read after filtering
+                    config->getPostStats1()->statRead(outr);
+                } else if(mFailedWriter && outReads.size() == 1) {
+                    or1->appendToStringWithTag(failedOut, FAILED_TYPES[result]);
+                }
+
+                // release the read if it's created by breaking gap
+                if(outr != or1 && outr!= r1 && outr != NULL)
+                    recycleToPool(tid, outr);
             }
+        } else {
+            for(int i=0; i<outReads.size(); i++) {
 
-            // release the read if it's created by breaking gap
-            if(outr != or1 && outr!= r1 && outr != NULL)
-                recycleToPool(tid, outr);
+                Read* outr = outReads[i];
+                int result = mFilter->passFilter(outr);
+
+                if( outr != NULL &&  result == PASS_FILTER) {
+                    if(shallKeepBySampling(outr)) {
+                        config->addFilterResult(result, 1);
+                        outr->appendToString(outstr);
+
+                        passed = true;
+                        // stats the read after filtering and sampling
+                        config->getPostStats1()->statRead(outr);
+                    } else {
+                        config->getFilterResult()->addSamplingDropped(outr->length());
+                    }
+                } else if(mFailedWriter && outReads.size() == 1) {
+                    config->addFilterResult(result, 1);
+                    or1->appendToStringWithTag(failedOut, FAILED_TYPES[result]);
+                } else {
+                    config->addFilterResult(result, 1);
+                }
+
+                // release the read if it's created by breaking gap
+                if(outr != or1 && outr!= r1 && outr != NULL)
+                    recycleToPool(tid, outr);
+            }
         }
 
         if(passed)
@@ -430,6 +500,15 @@ void SingleEndProcessor::readerTask()
 
 void SingleEndProcessor::processorTask(ThreadConfig* config)
 {
+    if(mOptions->sampling.enabled)
+        processorTaskImpl<true>(config);
+    else
+        processorTaskImpl<false>(config);
+}
+
+template<bool samplingEnabled>
+void SingleEndProcessor::processorTaskImpl(ThreadConfig* config)
+{
     SingleProducerSingleConsumerList<ReadPack*>* input = config->getInput();
     while(true) {
         if(config->canBeStopped()){
@@ -437,7 +516,7 @@ void SingleEndProcessor::processorTask(ThreadConfig* config)
         }
         while(input->canBeConsumed()) {
             ReadPack* data = input->consume();
-            processSingleEnd(data, config);
+            processSingleEnd<samplingEnabled>(data, config);
         }
         if(input->isProducerFinished()) {
             if(!input->canBeConsumed()) {

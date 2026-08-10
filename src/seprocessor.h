@@ -15,6 +15,7 @@
 #include "writerthread.h"
 #include "singleproducersingleconsumerlist.h"
 #include "readpool.h"
+#include "common.h"
 
 using namespace std;
 
@@ -24,17 +25,21 @@ class SingleEndProcessor{
 public:
     SingleEndProcessor(Options* opt);
     ~SingleEndProcessor();
-    bool process();
+    bool process(ProcessingResult* result = NULL);
 
 private:
+    template<bool samplingEnabled>
     bool processSingleEnd(ReadPack* pack, ThreadConfig* config);
     void readerTask();
     void processorTask(ThreadConfig* config);
+    template<bool samplingEnabled>
+    void processorTaskImpl(ThreadConfig* config);
     void initConfig(ThreadConfig* config);
     void initOutput();
     void closeOutput();
     void writerTask(WriterThread* config);
     void recycleToPool(int tid, Read* r);
+    bool shallKeepBySampling(Read* r);
 
 private:
     Options* mOptions;

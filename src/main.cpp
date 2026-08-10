@@ -36,6 +36,11 @@ int main(int argc, char* argv[]){
     cmd.add("dont_overwrite", 0, "don't overwrite existing files. Overwritting is allowed by default.");
     cmd.add("verbose", 'V', "output verbose log information (i.e. when every 1M reads are processed).");
 
+    // output sampling
+    cmd.add<long>("target_bases", 0, "approximately target this number of bases to output after filtering. This option reads the input twice and cannot be used with --sample_rate or output splitting.", false, 0);
+    cmd.add<double>("sample_rate", 0, "randomly keep this fraction of reads after filtering (0.0~1.0). This option cannot be used with --target_bases.", false, 1.0);
+    cmd.add<unsigned long>("seed", 0, "seed for reproducible output sampling.", false, 1);
+
     // adapter
     cmd.add("disable_adapter_trimming", 'A', "adapter trimming is enabled by default. If this option is specified, adapter trimming is disabled");
     cmd.add<string>("start_adapter", 's', "the adapter sequence at read start (5').", false, "auto");
@@ -128,6 +133,12 @@ int main(int argc, char* argv[]){
     opt.inputFromSTDIN = cmd.exist("stdin");
     opt.outputToSTDOUT = cmd.exist("stdout");
     opt.verbose = cmd.exist("verbose");
+    opt.sampling.targetBasesSpecified = cmd.exist("target_bases");
+    opt.sampling.sampleRateSpecified = cmd.exist("sample_rate");
+    opt.sampling.targetBases = cmd.get<long>("target_bases");
+    opt.sampling.sampleRate = cmd.get<double>("sample_rate");
+    opt.sampling.seed = cmd.get<unsigned long>("seed");
+    opt.sampling.enabled = opt.sampling.targetBasesSpecified || opt.sampling.sampleRateSpecified;
 
 
     // adapter cutting
@@ -258,6 +269,9 @@ int main(int argc, char* argv[]){
         }
     }
 
+    if(opt.sampling.sampleRateSpecified && opt.sampling.targetBasesSpecified)
+        error_exit("--sample_rate and --target_bases cannot be specified together");
+
     stringstream ss;
     for(int i=0;i<argc;i++){
         ss << argv[i] << " ";
@@ -302,6 +316,29 @@ int main(int argc, char* argv[]){
         if(opt.split.size <= 0) {
             opt.split.size = 1;
             cerr << "WARNING: the input file has less reads than the number of files to split" << endl;
+        }
+    }
+
+    if(opt.sampling.targetBasesSpecified) {
+        cerr << "Sampling evaluation: processing reads once to estimate clean bases after filtering" << endl;
+        Options evalOpt = opt;
+        evalOpt.sampling.enabled = false;
+        evalOpt.sampling.evaluating = true;
+        evalOpt.out = "";
+        evalOpt.failedOut = "";
+        evalOpt.outputToSTDOUT = false;
+        ProcessingResult evalResult;
+        Processor evalProcessor(&evalOpt);
+        evalProcessor.process(&evalResult);
+
+        if(evalResult.afterFilteringBases <= 0) {
+            opt.sampling.sampleRate = 0.0;
+            cerr << "Sampling evaluation: no clean bases after filtering, output will be empty" << endl;
+        } else {
+            opt.sampling.sampleRate = min(1.0, (double)opt.sampling.targetBases / (double)evalResult.afterFilteringBases);
+            cerr << "Sampling evaluation: clean bases before sampling: " << evalResult.afterFilteringBases << endl;
+            cerr << "Sampling evaluation: target bases: " << opt.sampling.targetBases << endl;
+            cerr << "Sampling evaluation: sample rate: " << opt.sampling.sampleRate << endl;
         }
     }
 

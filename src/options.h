@@ -67,6 +67,27 @@ public:
     double max;
 };
 
+class SamplingOptions {
+public:
+    SamplingOptions() {
+        enabled = false;
+        evaluating = false;
+        sampleRateSpecified = false;
+        targetBasesSpecified = false;
+        sampleRate = 1.0;
+        targetBases = 0;
+        seed = 1;
+    }
+public:
+    bool enabled;
+    bool evaluating;
+    bool sampleRateSpecified;
+    bool targetBasesSpecified;
+    double sampleRate;
+    long targetBases;
+    unsigned long seed;
+};
+
 
 class PolyXTrimmerOptions {
 public:
@@ -269,6 +290,8 @@ public:
     LowComplexityFilterOptions complexityFilter;
     // GC content filtering
     GCContentFilteringOptions gcContentFilter;
+    // output sampling
+    SamplingOptions sampling;
     // N masking by quality
     MaskOptions mask;
     // break reads into high-quality fragments, and discard low-quality fragments

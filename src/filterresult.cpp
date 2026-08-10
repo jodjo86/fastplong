@@ -8,6 +8,8 @@ FilterResult::FilterResult(Options* opt, bool paired){
     mOptions = opt;
     mTrimmedAdapterRead = 0;
     mTrimmedAdapterBases = 0;
+    mSamplingDroppedReads = 0;
+    mSamplingDroppedBases = 0;
     for(int i=0; i<FILTER_RESULT_TYPES; i++) {
         mFilterReadStats[i] = 0;
     }
@@ -39,6 +41,8 @@ FilterResult* FilterResult::merge(vector<FilterResult*>& list) {
         }
         result->mTrimmedAdapterRead += list[i]->mTrimmedAdapterRead;
         result->mTrimmedAdapterBases += list[i]->mTrimmedAdapterBases;
+        result->mSamplingDroppedReads += list[i]->mSamplingDroppedReads;
+        result->mSamplingDroppedBases += list[i]->mSamplingDroppedBases;
 
         for(int b=0; b<4; b++) {
           result->mTrimmedPolyXReads[b] += list[i]->mTrimmedPolyXReads[b];
@@ -80,6 +84,11 @@ void FilterResult::addPolyXTrimmed(int base, int length) {
     mTrimmedPolyXBases[base] += length;
 }
 
+void FilterResult::addSamplingDropped(int bases) {
+    mSamplingDroppedReads++;
+    mSamplingDroppedBases += bases;
+}
+
 long FilterResult::getTotalPolyXTrimmedReads() {
   long sum_reads = 0;
   for(int b = 0; b < 4; b++)
@@ -110,6 +119,10 @@ void FilterResult::print() {
     if(mOptions->complexityFilter.enabled) {
         cerr <<  "reads failed due to low complexity: " << mFilterReadStats[FAIL_COMPLEXITY] << endl;
     }
+    if(mOptions->sampling.enabled) {
+        cerr <<  "reads discarded by sampling: " << mSamplingDroppedReads << endl;
+        cerr <<  "bases discarded by sampling: " << mSamplingDroppedBases << endl;
+    }
     if(mOptions->adapter.enabled) {
         cerr <<  "reads with adapter trimmed: " << mTrimmedAdapterRead << endl;
         cerr <<  "bases trimmed due to adapters: " << mTrimmedAdapterBases << endl;
@@ -131,7 +144,14 @@ void FilterResult::reportJson(ofstream& ofs, string padding) {
     if(mOptions->complexityFilter.enabled)
         ofs << padding << "\t" << "\"low_complexity_reads\": " << mFilterReadStats[FAIL_COMPLEXITY] << "," << endl;
     ofs << padding << "\t" << "\"too_short_reads\": " << mFilterReadStats[FAIL_LENGTH] << "," << endl;
-    ofs << padding << "\t" << "\"too_long_reads\": " << mFilterReadStats[FAIL_TOO_LONG] << endl;
+    ofs << padding << "\t" << "\"too_long_reads\": " << mFilterReadStats[FAIL_TOO_LONG];
+    if(mOptions->sampling.enabled) {
+        ofs << "," << endl;
+        ofs << padding << "\t" << "\"sampling_dropped_reads\": " << mSamplingDroppedReads << "," << endl;
+        ofs << padding << "\t" << "\"sampling_dropped_bases\": " << mSamplingDroppedBases << endl;
+    } else {
+        ofs << endl;
+    }
 
     ofs << padding << "}," << endl;
 }
@@ -245,6 +265,10 @@ void FilterResult::reportHtml(ofstream& ofs, long totalReads, long totalBases) {
     }
     if(mOptions->complexityFilter.enabled)
         HtmlReporter::outputRow(ofs, "reads with low complexity:", HtmlReporter::formatNumber(mFilterReadStats[FAIL_COMPLEXITY]) + " (" + to_string(mFilterReadStats[FAIL_COMPLEXITY] * 100.0 / total) + "%)");
+    if(mOptions->sampling.enabled) {
+        HtmlReporter::outputRow(ofs, "reads discarded by sampling:", HtmlReporter::formatNumber(mSamplingDroppedReads) + " (" + to_string(mSamplingDroppedReads * 100.0 / total) + "%)");
+        HtmlReporter::outputRow(ofs, "bases discarded by sampling:", HtmlReporter::formatNumber(mSamplingDroppedBases) + " (" + HtmlReporter::getPercents(mSamplingDroppedBases, totalBases) + "%)");
+    }
     ofs << "</table>\n";
 }
 
