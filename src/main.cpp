@@ -9,6 +9,8 @@
 #include "processor.h"
 #include "evaluator.h"
 #include "sequence.h"
+#include "jsonreporter.h"
+#include "htmlreporter.h"
 
 // TODO: code refactoring to remove these global variables
 string command;
@@ -36,6 +38,7 @@ int main(int argc, char* argv[]){
     cmd.add<int>("reads_to_process", 0, "specify how many reads/pairs to be processed. Default 0 means process all reads.", false, 0);
     cmd.add("dont_overwrite", 0, "don't overwrite existing files. Overwritting is allowed by default.");
     cmd.add("verbose", 'V', "output verbose log information (i.e. when every 1M reads are processed).");
+    cmd.add<string>("ont_summary", 0, "ONT sequencing_summary.txt file to add run-level QC charts to JSON/HTML reports. Can be used without FASTQ input for summary-only reporting.", false, "");
 
     // output sampling
     cmd.add<long>("target_bases", 0, "approximately target this number of bases to output after filtering. This option reads the input twice and cannot be used with --sample_rate or output splitting.", false, 0);
@@ -136,6 +139,7 @@ int main(int argc, char* argv[]){
     opt.inputFromSTDIN = cmd.exist("stdin");
     opt.outputToSTDOUT = cmd.exist("stdout");
     opt.verbose = cmd.exist("verbose");
+    opt.ontSummary.setFilename(cmd.get<string>("ont_summary"));
     opt.sampling.targetBasesSpecified = cmd.exist("target_bases");
     opt.sampling.sampleRateSpecified = cmd.exist("sample_rate");
     opt.sampling.targetBases = cmd.get<long>("target_bases");
@@ -296,7 +300,8 @@ int main(int argc, char* argv[]){
 
     time_t t1 = time(NULL);
 
-    bool supportEvaluation = !opt.inputFromSTDIN && opt.in!="/dev/stdin";
+    bool hasReadInput = !opt.in.empty() || opt.inputFromSTDIN;
+    bool supportEvaluation = hasReadInput && !opt.inputFromSTDIN && opt.in!="/dev/stdin";
 
     Evaluator eva(&opt);
     if(supportEvaluation) {
@@ -306,7 +311,7 @@ int main(int argc, char* argv[]){
     long readNum = 0;
 
     // using evaluator to guess how many reads in total
-    if(opt.shallDetectAdapter()) {
+    if(hasReadInput && opt.shallDetectAdapter()) {
         if(!supportEvaluation) {
             cerr << "Adapter auto-detection is disabled for STDIN mode" << endl;
             if(opt.adapter.sequenceStart == "auto")
@@ -320,6 +325,25 @@ int main(int argc, char* argv[]){
     }
 
     opt.validate();
+
+    if(opt.ontSummary.enabled()) {
+        cerr << "ONT summary: parsing " << opt.ontSummary.filename() << endl;
+        opt.ontSummary.parse();
+    }
+
+    if(!hasReadInput) {
+        JsonReporter jr(&opt);
+        jr.report(NULL, NULL, NULL);
+        HtmlReporter hr(&opt);
+        hr.report(NULL, NULL, NULL);
+
+        time_t t2 = time(NULL);
+        cerr << endl << "JSON report: " << opt.jsonFile << endl;
+        cerr << "HTML report: " << opt.htmlFile << endl;
+        cerr << endl << command << endl;
+        cerr << "fastplong v" << FASTPLONG_VER << ", time used: " << (t2)-t1 << " seconds" << endl;
+        return 0;
+    }
 
     // using evaluator to guess how many reads in total
     if(opt.split.needEvaluation && supportEvaluation) {

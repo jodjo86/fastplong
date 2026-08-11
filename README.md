@@ -45,6 +45,7 @@ Both input and output can be gzip compressed. By default, the HTML report is sav
 # examples of report
 `fastplong` creates reports in both HTML and JSON format.
 The report includes long-read QC charts for read length distribution, cumulative yield by minimum read length, read GC content distribution, and read mean quality distribution before and after filtering.
+ONT `sequencing_summary.txt` can be added with `--ont_summary` to include run-level QC charts such as pass/fail yield, yield over time, read count and quality over time, channel activity, read length distribution, and read qscore distribution.
 * HTML report: http://opengene.org/fastplong/fastplong.html
 * JSON report: http://opengene.org/fastplong/fastplong.json
 
@@ -101,6 +102,10 @@ Specify input by `-i` or `--in`, and specify output by `-o` or `--out`.
 * specify `--stdout` to enable this mode to stream output to STDOUT
 ## input from STDIN
 * specify `--stdin` if you want to read the STDIN for processing.
+## ONT sequencing summary
+* specify `--ont_summary sequencing_summary.txt` to add ONT run-level QC charts to the HTML and JSON reports.
+* `--ont_summary` can also be used without `--in` to generate ONT summary-only reports.
+* supported summary columns include `sequence_length_template` or `sequence_length`, `mean_qscore_template` or `mean_qscore`, and optional `passes_filtering`, `start_time`, `duration`, and `channel`.
 ## store the reads that fail the filters
 * give `--failed_out` to specify the file name to store the failed reads.
 * if one read failed and is written to `--failed_out`, its `failure reason` will be appended to its read name. For example, `failed_quality_filter`, `failed_too_short` etc.
@@ -257,6 +262,7 @@ options:
       --reads_to_process             specify how many reads/pairs to be processed. Default 0 means process all reads. (int [=0])
       --dont_overwrite               don't overwrite existing files. Overwritting is allowed by default.
   -V, --verbose                      output verbose log information (i.e. when every 1M reads are processed).
+      --ont_summary                  ONT sequencing_summary.txt file to add run-level QC charts to JSON/HTML reports. Can be used without FASTQ input for summary-only reporting. (string [=])
       --target_bases                 approximately target this number of bases to output after filtering. This option reads the input twice and cannot be used with --sample_rate or output splitting. (long [=0])
       --sample_rate                  randomly keep this fraction of reads after filtering (0.0~1.0). This option cannot be used with --target_bases. (double [=1])
       --seed                         seed for reproducible output sampling. (unsigned long [=1])

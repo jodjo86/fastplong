@@ -13,6 +13,23 @@ void JsonReporter::report(FilterResult* result, Stats* preStats1, Stats* postSta
     ofs.open(mOptions->jsonFile, ifstream::out);
     ofs << "{" << endl;
 
+    if(!preStats1 || !postStats1) {
+        ofs << "\t" << "\"summary\": {" << endl;
+        ofs << "\t\t" << "\"fastplong_version\": \""<< FASTPLONG_VER << "\"";
+        if(mOptions->ontSummary.enabled()) {
+            ofs << "," << endl;
+            ofs << "\t\t" << "\"ont_sequencing_summary\": ";
+            mOptions->ontSummary.reportJson(ofs, "\t\t");
+            ofs << endl;
+        } else {
+            ofs << endl;
+        }
+        ofs << "\t" << "}," << endl;
+        ofs << "\t\"command\": " << "\"" << command << "\"" << endl;
+        ofs << "}";
+        return;
+    }
+
     long pre_total_reads = preStats1->getReads();
 
     long pre_total_bases = preStats1->getBases();
@@ -109,6 +126,12 @@ void JsonReporter::report(FilterResult* result, Stats* preStats1, Stats* postSta
         string name = "read_after_filtering";
         ofs << "\t" << "\"" << name << "\": " ;
         postStats1 -> reportJson(ofs, "\t");
+    }
+
+    if(mOptions->ontSummary.enabled()) {
+        ofs << "\t" << "\"ont_sequencing_summary\": ";
+        mOptions->ontSummary.reportJson(ofs, "\t");
+        ofs << "," << endl;
     }
 
     ofs << "\t\"command\": " << "\"" << command << "\"" << endl;

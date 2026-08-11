@@ -7,6 +7,7 @@
 #include <vector>
 #include <map>
 #include <unordered_set>
+#include "ontsummary.h"
 
 using namespace std;
 
@@ -333,6 +334,8 @@ public:
     size_t writerBufferSize;
     // is direct RNA sequencing data, which contains U not T
     bool isRNA;
+    // optional ONT sequencing_summary.txt report
+    OntSummary ontSummary;
 
 };
 

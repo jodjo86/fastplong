@@ -78,6 +78,13 @@ void HtmlReporter::report(FilterResult* result, Stats* preStats1, Stats* postSta
 
     printHeader(ofs);
 
+    if(!preStats1 || !postStats1) {
+        if(mOptions->ontSummary.enabled())
+            mOptions->ontSummary.reportHtml(ofs);
+        printFooter(ofs);
+        return;
+    }
+
     printSummary(ofs, result, preStats1, postStats1);
 
     // basic statistics
@@ -175,6 +182,10 @@ void HtmlReporter::report(FilterResult* result, Stats* preStats1, Stats* postSta
     ofs << "</td></tr>\n";
     ofs << "</table>\n";
     ofs << "</div>\n";
+
+    if(mOptions->ontSummary.enabled()) {
+        mOptions->ontSummary.reportHtml(ofs);
+    }
 
     // kmer statistics
     ofs << "<div class='section_div'>\n";
