@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_set>
 
 using namespace std;
 
@@ -86,6 +87,34 @@ public:
     double sampleRate;
     long targetBases;
     unsigned long seed;
+};
+
+class BestReadOptions {
+public:
+    BestReadOptions() {
+        enabled = false;
+        evaluating = false;
+        bestReadsSpecified = false;
+        bestBasesSpecified = false;
+        bestReads = 0;
+        bestBases = 0;
+        selectedReads = 0;
+        selectedBases = 0;
+        candidateReads = 0;
+        candidateBases = 0;
+    }
+public:
+    bool enabled;
+    bool evaluating;
+    bool bestReadsSpecified;
+    bool bestBasesSpecified;
+    long bestReads;
+    long bestBases;
+    long selectedReads;
+    long selectedBases;
+    long candidateReads;
+    long candidateBases;
+    unordered_set<unsigned long long> retainedKeys;
 };
 
 
@@ -292,6 +321,8 @@ public:
     GCContentFilteringOptions gcContentFilter;
     // output sampling
     SamplingOptions sampling;
+    // keep best reads by quality score
+    BestReadOptions bestRead;
     // N masking by quality
     MaskOptions mask;
     // break reads into high-quality fragments, and discard low-quality fragments

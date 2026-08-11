@@ -28,11 +28,11 @@ public:
     bool process(ProcessingResult* result = NULL);
 
 private:
-    template<bool samplingEnabled>
+    template<bool samplingEnabled, bool bestReadEnabled>
     bool processSingleEnd(ReadPack* pack, ThreadConfig* config);
     void readerTask();
     void processorTask(ThreadConfig* config);
-    template<bool samplingEnabled>
+    template<bool samplingEnabled, bool bestReadEnabled>
     void processorTaskImpl(ThreadConfig* config);
     void initConfig(ThreadConfig* config);
     void initOutput();
@@ -40,6 +40,7 @@ private:
     void writerTask(WriterThread* config);
     void recycleToPool(int tid, Read* r);
     bool shallKeepBySampling(Read* r);
+    bool shallKeepByTopReadSelection(unsigned long long key);
 
 private:
     Options* mOptions;

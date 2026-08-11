@@ -113,6 +113,13 @@ If you don't want to process all the data, you can specify `--reads_to_process` 
 * specify `--seed` to make sampling reproducible. The same input, options, and seed produce the same sampled reads.
 * `--target_bases` is not supported with `--stdin` because it needs to read the input twice.
 * output sampling cannot be used together with output splitting.
+## keep the best reads
+`fastplong` can keep only the best reads after trimming and filtering. The score is the mean Phred quality of each processed read. Reads are sorted by score, then length, then a stable read key.
+* specify `--best_reads` to keep the best N reads.
+* specify `--best_bases` to keep best-scoring reads until the selected bases reach this value.
+* `--best_reads` and `--best_bases` cannot be specified together.
+* these options read the input twice and are not supported with `--stdin`.
+* best read selection cannot be used together with output sampling or output splitting.
 ## do not overwrite exiting files
 You can enable the option `--dont_overwrite` to protect the existing files not to be overwritten by `fastplong`. In this case, `fastplong` will report an error and quit if it finds any of the output files (read, json report, html report) already exists before.
 ## split the output to multiple files for parallel processing
@@ -252,6 +259,8 @@ options:
       --target_bases                 approximately target this number of bases to output after filtering. This option reads the input twice and cannot be used with --sample_rate or output splitting. (long [=0])
       --sample_rate                  randomly keep this fraction of reads after filtering (0.0~1.0). This option cannot be used with --target_bases. (double [=1])
       --seed                         seed for reproducible output sampling. (unsigned long [=1])
+      --best_reads                   keep the best N reads by mean quality after filtering. This option reads the input twice and cannot be used with --best_bases. (long [=0])
+      --best_bases                   keep the best reads by mean quality until this many bases are selected after filtering. This option reads the input twice and cannot be used with --best_reads. (long [=0])
   -A, --disable_adapter_trimming     adapter trimming is enabled by default. If this option is specified, adapter trimming is disabled
   -s, --start_adapter                the adapter sequence at read start (5'). (string [=auto])
   -e, --end_adapter                  the adapter sequence at read end (3'). (string [=auto])

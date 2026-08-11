@@ -43,6 +43,7 @@ FilterResult* FilterResult::merge(vector<FilterResult*>& list) {
         result->mTrimmedAdapterBases += list[i]->mTrimmedAdapterBases;
         result->mSamplingDroppedReads += list[i]->mSamplingDroppedReads;
         result->mSamplingDroppedBases += list[i]->mSamplingDroppedBases;
+        result->mBestReadCandidates.insert(result->mBestReadCandidates.end(), list[i]->mBestReadCandidates.begin(), list[i]->mBestReadCandidates.end());
 
         for(int b=0; b<4; b++) {
           result->mTrimmedPolyXReads[b] += list[i]->mTrimmedPolyXReads[b];
@@ -89,6 +90,10 @@ void FilterResult::addSamplingDropped(int bases) {
     mSamplingDroppedBases += bases;
 }
 
+void FilterResult::addBestReadCandidate(unsigned long long key, double score, int length) {
+    mBestReadCandidates.push_back(BestReadRecord(key, score, length));
+}
+
 long FilterResult::getTotalPolyXTrimmedReads() {
   long sum_reads = 0;
   for(int b = 0; b < 4; b++)
@@ -123,6 +128,12 @@ void FilterResult::print() {
         cerr <<  "reads discarded by sampling: " << mSamplingDroppedReads << endl;
         cerr <<  "bases discarded by sampling: " << mSamplingDroppedBases << endl;
     }
+    if(mOptions->bestRead.enabled) {
+        cerr <<  "candidate reads for best read selection: " << mOptions->bestRead.candidateReads << endl;
+        cerr <<  "candidate bases for best read selection: " << mOptions->bestRead.candidateBases << endl;
+        cerr <<  "selected reads by best read selection: " << mOptions->bestRead.selectedReads << endl;
+        cerr <<  "selected bases by best read selection: " << mOptions->bestRead.selectedBases << endl;
+    }
     if(mOptions->adapter.enabled) {
         cerr <<  "reads with adapter trimmed: " << mTrimmedAdapterRead << endl;
         cerr <<  "bases trimmed due to adapters: " << mTrimmedAdapterBases << endl;
@@ -149,6 +160,12 @@ void FilterResult::reportJson(ofstream& ofs, string padding) {
         ofs << "," << endl;
         ofs << padding << "\t" << "\"sampling_dropped_reads\": " << mSamplingDroppedReads << "," << endl;
         ofs << padding << "\t" << "\"sampling_dropped_bases\": " << mSamplingDroppedBases << endl;
+    } else if(mOptions->bestRead.enabled) {
+        ofs << "," << endl;
+        ofs << padding << "\t" << "\"best_selection_candidate_reads\": " << mOptions->bestRead.candidateReads << "," << endl;
+        ofs << padding << "\t" << "\"best_selection_candidate_bases\": " << mOptions->bestRead.candidateBases << "," << endl;
+        ofs << padding << "\t" << "\"best_selection_selected_reads\": " << mOptions->bestRead.selectedReads << "," << endl;
+        ofs << padding << "\t" << "\"best_selection_selected_bases\": " << mOptions->bestRead.selectedBases << endl;
     } else {
         ofs << endl;
     }
@@ -268,6 +285,12 @@ void FilterResult::reportHtml(ofstream& ofs, long totalReads, long totalBases) {
     if(mOptions->sampling.enabled) {
         HtmlReporter::outputRow(ofs, "reads discarded by sampling:", HtmlReporter::formatNumber(mSamplingDroppedReads) + " (" + to_string(mSamplingDroppedReads * 100.0 / total) + "%)");
         HtmlReporter::outputRow(ofs, "bases discarded by sampling:", HtmlReporter::formatNumber(mSamplingDroppedBases) + " (" + HtmlReporter::getPercents(mSamplingDroppedBases, totalBases) + "%)");
+    }
+    if(mOptions->bestRead.enabled) {
+        HtmlReporter::outputRow(ofs, "candidate reads for best read selection:", HtmlReporter::formatNumber(mOptions->bestRead.candidateReads));
+        HtmlReporter::outputRow(ofs, "candidate bases for best read selection:", HtmlReporter::formatNumber(mOptions->bestRead.candidateBases));
+        HtmlReporter::outputRow(ofs, "selected reads by best read selection:", HtmlReporter::formatNumber(mOptions->bestRead.selectedReads));
+        HtmlReporter::outputRow(ofs, "selected bases by best read selection:", HtmlReporter::formatNumber(mOptions->bestRead.selectedBases));
     }
     ofs << "</table>\n";
 }

@@ -1,6 +1,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <vector>
+
 #define FASTPLONG_VER "0.5.0"
 
 #define _DEBUG false
@@ -22,6 +24,22 @@ typedef unsigned short uint16;
 typedef char int8;
 typedef unsigned char uint8;
 
+struct BestReadRecord {
+	BestReadRecord() {
+		key = 0;
+		score = 0.0;
+		length = 0;
+	}
+	BestReadRecord(unsigned long long k, double s, int l) {
+		key = k;
+		score = s;
+		length = l;
+	}
+	unsigned long long key;
+	double score;
+	int length;
+};
+
 struct ProcessingResult {
 	ProcessingResult() {
 		beforeFilteringReads = 0;
@@ -33,6 +51,7 @@ struct ProcessingResult {
 	long beforeFilteringBases;
 	long afterFilteringReads;
 	long afterFilteringBases;
+	std::vector<BestReadRecord> bestReadCandidates;
 };
 
 const char ATCG_BASES[] = {'A', 'T', 'C', 'G'};

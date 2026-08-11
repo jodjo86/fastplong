@@ -140,6 +140,24 @@ bool Options::validate() {
     if(sampling.enabled && split.enabled)
         error_exit("output sampling cannot work with output splitting mode");
 
+    if(bestRead.bestReadsSpecified && bestRead.bestBasesSpecified)
+        error_exit("--best_reads and --best_bases cannot be specified together");
+
+    if(bestRead.bestReadsSpecified && bestRead.bestReads <= 0)
+        error_exit("best reads (--best_reads) should be greater than 0");
+
+    if(bestRead.bestBasesSpecified && bestRead.bestBases <= 0)
+        error_exit("best bases (--best_bases) should be greater than 0");
+
+    if(bestRead.enabled && in == "/dev/stdin")
+        error_exit("--best_reads/--best_bases are not supported in STDIN mode since they need to read the input twice");
+
+    if(bestRead.enabled && split.enabled)
+        error_exit("best read selection cannot work with output splitting mode");
+
+    if(bestRead.enabled && sampling.enabled)
+        error_exit("best read selection cannot work with output sampling mode");
+
     if(thread < 1) {
         thread = 1;
     } else if(thread > 16) {

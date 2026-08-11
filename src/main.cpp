@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "fastqreader.h"
 #include <time.h>
+#include <algorithm>
 #include "cmdline.h"
 #include <sstream>
 #include "util.h"
@@ -40,6 +41,8 @@ int main(int argc, char* argv[]){
     cmd.add<long>("target_bases", 0, "approximately target this number of bases to output after filtering. This option reads the input twice and cannot be used with --sample_rate or output splitting.", false, 0);
     cmd.add<double>("sample_rate", 0, "randomly keep this fraction of reads after filtering (0.0~1.0). This option cannot be used with --target_bases.", false, 1.0);
     cmd.add<unsigned long>("seed", 0, "seed for reproducible output sampling.", false, 1);
+    cmd.add<long>("best_reads", 0, "keep the best N reads by mean quality after filtering. This option reads the input twice and cannot be used with --best_bases.", false, 0);
+    cmd.add<long>("best_bases", 0, "keep the best reads by mean quality until this many bases are selected after filtering. This option reads the input twice and cannot be used with --best_reads.", false, 0);
 
     // adapter
     cmd.add("disable_adapter_trimming", 'A', "adapter trimming is enabled by default. If this option is specified, adapter trimming is disabled");
@@ -139,6 +142,11 @@ int main(int argc, char* argv[]){
     opt.sampling.sampleRate = cmd.get<double>("sample_rate");
     opt.sampling.seed = cmd.get<unsigned long>("seed");
     opt.sampling.enabled = opt.sampling.targetBasesSpecified || opt.sampling.sampleRateSpecified;
+    opt.bestRead.bestReadsSpecified = cmd.exist("best_reads");
+    opt.bestRead.bestBasesSpecified = cmd.exist("best_bases");
+    opt.bestRead.bestReads = cmd.get<long>("best_reads");
+    opt.bestRead.bestBases = cmd.get<long>("best_bases");
+    opt.bestRead.enabled = opt.bestRead.bestReadsSpecified || opt.bestRead.bestBasesSpecified;
 
 
     // adapter cutting
@@ -271,6 +279,14 @@ int main(int argc, char* argv[]){
 
     if(opt.sampling.sampleRateSpecified && opt.sampling.targetBasesSpecified)
         error_exit("--sample_rate and --target_bases cannot be specified together");
+    if(opt.bestRead.bestReadsSpecified && opt.bestRead.bestBasesSpecified)
+        error_exit("--best_reads and --best_bases cannot be specified together");
+    if(opt.bestRead.enabled && opt.sampling.enabled)
+        error_exit("best read selection cannot work with output sampling mode");
+    if(opt.bestRead.enabled && opt.split.enabled)
+        error_exit("best read selection cannot work with output splitting mode");
+    if(opt.bestRead.enabled && (opt.inputFromSTDIN || opt.in=="/dev/stdin"))
+        error_exit("--best_reads/--best_bases are not supported in STDIN mode since they need to read the input twice");
 
     stringstream ss;
     for(int i=0;i<argc;i++){
@@ -340,6 +356,51 @@ int main(int argc, char* argv[]){
             cerr << "Sampling evaluation: target bases: " << opt.sampling.targetBases << endl;
             cerr << "Sampling evaluation: sample rate: " << opt.sampling.sampleRate << endl;
         }
+    }
+
+    if(opt.bestRead.enabled) {
+        cerr << "Best read evaluation: processing reads once to score clean reads after filtering" << endl;
+        Options evalOpt = opt;
+        evalOpt.bestRead.evaluating = true;
+        evalOpt.out = "";
+        evalOpt.failedOut = "";
+        evalOpt.outputToSTDOUT = false;
+        ProcessingResult evalResult;
+        Processor evalProcessor(&evalOpt);
+        evalProcessor.process(&evalResult);
+
+        vector<BestReadRecord>& candidates = evalResult.bestReadCandidates;
+        sort(candidates.begin(), candidates.end(), [](const BestReadRecord& a, const BestReadRecord& b) {
+            if(a.score != b.score)
+                return a.score > b.score;
+            if(a.length != b.length)
+                return a.length > b.length;
+            return a.key < b.key;
+        });
+
+        opt.bestRead.candidateReads = candidates.size();
+        opt.bestRead.candidateBases = evalResult.afterFilteringBases;
+
+        long selectedBases = 0;
+        long selectedReads = 0;
+        for(size_t i=0; i<candidates.size(); i++) {
+            if(opt.bestRead.bestReadsSpecified && selectedReads >= opt.bestRead.bestReads)
+                break;
+            if(opt.bestRead.bestBasesSpecified && selectedBases >= opt.bestRead.bestBases)
+                break;
+
+            opt.bestRead.retainedKeys.insert(candidates[i].key);
+            selectedBases += candidates[i].length;
+            selectedReads++;
+        }
+
+        opt.bestRead.selectedReads = selectedReads;
+        opt.bestRead.selectedBases = selectedBases;
+
+        cerr << "Best read evaluation: candidate clean reads: " << opt.bestRead.candidateReads << endl;
+        cerr << "Best read evaluation: candidate clean bases: " << opt.bestRead.candidateBases << endl;
+        cerr << "Best read evaluation: selected reads: " << opt.bestRead.selectedReads << endl;
+        cerr << "Best read evaluation: selected bases: " << opt.bestRead.selectedBases << endl;
     }
 
     Processor p(&opt);

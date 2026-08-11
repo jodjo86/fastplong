@@ -36,7 +36,7 @@ SingleEndProcessor::~SingleEndProcessor() {
 }
 
 void SingleEndProcessor::initOutput() {
-    if(mOptions->sampling.evaluating)
+    if(mOptions->sampling.evaluating || mOptions->bestRead.evaluating)
         return;
     if(!mOptions->failedOut.empty())
         mFailedWriter = new WriterThread(mOptions, mOptions->failedOut);
@@ -128,6 +128,7 @@ bool SingleEndProcessor::process(ProcessingResult* result){
         result->beforeFilteringBases = finalPreStats->getBases();
         result->afterFilteringReads = finalPostStats->getReads();
         result->afterFilteringBases = finalPostStats->getBases();
+        result->bestReadCandidates = finalFilterResult->getBestReadCandidates();
     }
 
     // read filter results to the first thread's
@@ -136,7 +137,7 @@ bool SingleEndProcessor::process(ProcessingResult* result){
         postStats.push_back(configs[t]->getPostStats1());
     }
 
-    if(!mOptions->sampling.evaluating) {
+    if(!mOptions->sampling.evaluating && !mOptions->bestRead.evaluating) {
         cerr << "Before filtering:"<<endl;
         finalPreStats->print();
         cerr << endl;
@@ -189,15 +190,8 @@ void SingleEndProcessor::recycleToPool(int tid, Read* r) {
         delete r;
 }
 
-bool SingleEndProcessor::shallKeepBySampling(Read* r) {
-    if(!mOptions->sampling.enabled || mOptions->sampling.evaluating)
-        return true;
-    if(mOptions->sampling.sampleRate >= 1.0)
-        return true;
-    if(mOptions->sampling.sampleRate <= 0.0)
-        return false;
-
-    uint64_t h = 1469598103934665603ULL ^ (uint64_t)mOptions->sampling.seed;
+static unsigned long long makeReadSelectionKey(Read* r) {
+    uint64_t h = 1469598103934665603ULL;
     const uint64_t prime = 1099511628211ULL;
     const string* name = r->mName;
     const string* seq = r->mSeq;
@@ -211,12 +205,55 @@ bool SingleEndProcessor::shallKeepBySampling(Read* r) {
         h ^= (unsigned char)(*seq)[i];
         h *= prime;
     }
+    return h;
+}
+
+static unsigned long long makeTopReadSelectionKey(long readIndex, int fragmentIndex) {
+    uint64_t h = 1469598103934665603ULL;
+    const uint64_t prime = 1099511628211ULL;
+    h ^= (uint64_t)readIndex;
+    h *= prime;
+    h ^= 0xff;
+    h *= prime;
+    h ^= (uint64_t)fragmentIndex;
+    h *= prime;
+    return h;
+}
+
+static double meanReadQuality(Read* r) {
+    const string* qual = r->mQuality;
+    if(qual->empty())
+        return 0.0;
+    long total = 0;
+    for(size_t i=0; i<qual->size(); i++)
+        total += (*qual)[i] - 33;
+    return (double)total / (double)qual->size();
+}
+
+bool SingleEndProcessor::shallKeepBySampling(Read* r) {
+    if(!mOptions->sampling.enabled || mOptions->sampling.evaluating)
+        return true;
+    if(mOptions->sampling.sampleRate >= 1.0)
+        return true;
+    if(mOptions->sampling.sampleRate <= 0.0)
+        return false;
+
+    uint64_t h = 1469598103934665603ULL ^ (uint64_t)mOptions->sampling.seed;
+    const uint64_t prime = 1099511628211ULL;
+    h ^= makeReadSelectionKey(r);
+    h *= prime;
 
     double fraction = (h >> 11) * (1.0 / 9007199254740992.0);
     return fraction < mOptions->sampling.sampleRate;
 }
 
-template<bool samplingEnabled>
+bool SingleEndProcessor::shallKeepByTopReadSelection(unsigned long long key) {
+    if(!mOptions->bestRead.enabled || mOptions->bestRead.evaluating)
+        return true;
+    return mOptions->bestRead.retainedKeys.count(key) > 0;
+}
+
+template<bool samplingEnabled, bool bestReadEnabled>
 bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
     string* outstr = new string();
     string* failedOut = new string();
@@ -302,7 +339,7 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
         }
 
         bool passed = false;
-        if(!samplingEnabled) {
+        if(!samplingEnabled && !bestReadEnabled) {
             for(int i=0; i<outReads.size(); i++) {
 
                 Read* outr = outReads[i];
@@ -318,6 +355,40 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
                     config->getPostStats1()->statRead(outr);
                 } else if(mFailedWriter && outReads.size() == 1) {
                     or1->appendToStringWithTag(failedOut, FAILED_TYPES[result]);
+                }
+
+                // release the read if it's created by breaking gap
+                if(outr != or1 && outr!= r1 && outr != NULL)
+                    recycleToPool(tid, outr);
+            }
+        } else if(bestReadEnabled) {
+            for(int i=0; i<outReads.size(); i++) {
+
+                Read* outr = outReads[i];
+                int result = mFilter->passFilter(outr);
+
+                if( outr != NULL &&  result == PASS_FILTER) {
+                    unsigned long long key = makeTopReadSelectionKey(pack->start + p, i);
+                    if(mOptions->bestRead.evaluating) {
+                        config->addFilterResult(result, 1);
+                        config->getFilterResult()->addBestReadCandidate(key, meanReadQuality(outr), outr->length());
+
+                        passed = true;
+                        // stats all clean reads during best read evaluation
+                        config->getPostStats1()->statRead(outr);
+                    } else if(shallKeepByTopReadSelection(key)) {
+                        config->addFilterResult(result, 1);
+                        outr->appendToString(outstr);
+
+                        passed = true;
+                        // stats selected clean reads
+                        config->getPostStats1()->statRead(outr);
+                    }
+                } else if(mFailedWriter && outReads.size() == 1) {
+                    config->addFilterResult(result, 1);
+                    or1->appendToStringWithTag(failedOut, FAILED_TYPES[result]);
+                } else {
+                    config->addFilterResult(result, 1);
                 }
 
                 // release the read if it's created by breaking gap
@@ -419,6 +490,7 @@ void SingleEndProcessor::readerTask()
             ReadPack* pack = new ReadPack;
             pack->data = data;
             pack->count = count;
+            pack->start = readNum;
             mInputLists[mPackReadCounter % mOptions->thread]->produce(pack);
             mPackReadCounter++;
             data = NULL;
@@ -444,6 +516,7 @@ void SingleEndProcessor::readerTask()
             ReadPack* pack = new ReadPack;
             pack->data = data;
             pack->count = count;
+            pack->start = readNum;
             mInputLists[mPackReadCounter % mOptions->thread]->produce(pack);
             mPackReadCounter++;
             //re-initialize data for next pack
@@ -500,13 +573,15 @@ void SingleEndProcessor::readerTask()
 
 void SingleEndProcessor::processorTask(ThreadConfig* config)
 {
-    if(mOptions->sampling.enabled)
-        processorTaskImpl<true>(config);
+    if(mOptions->bestRead.enabled)
+        processorTaskImpl<false, true>(config);
+    else if(mOptions->sampling.enabled)
+        processorTaskImpl<true, false>(config);
     else
-        processorTaskImpl<false>(config);
+        processorTaskImpl<false, false>(config);
 }
 
-template<bool samplingEnabled>
+template<bool samplingEnabled, bool bestReadEnabled>
 void SingleEndProcessor::processorTaskImpl(ThreadConfig* config)
 {
     SingleProducerSingleConsumerList<ReadPack*>* input = config->getInput();
@@ -516,7 +591,7 @@ void SingleEndProcessor::processorTaskImpl(ThreadConfig* config)
         }
         while(input->canBeConsumed()) {
             ReadPack* data = input->consume();
-            processSingleEnd<samplingEnabled>(data, config);
+            processSingleEnd<samplingEnabled, bestReadEnabled>(data, config);
         }
         if(input->isProducerFinished()) {
             if(!input->canBeConsumed()) {

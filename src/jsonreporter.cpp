@@ -68,6 +68,17 @@ void JsonReporter::report(FilterResult* result, Stats* preStats1, Stats* postSta
         ofs << "\t\t\t" << "\"clean_reads_before_sampling\":" << clean_reads_before_sampling << "," << endl;
         ofs << "\t\t\t" << "\"clean_bases_before_sampling\":" << clean_bases_before_sampling << endl;
         ofs << "\t\t" << "}";
+    } else if(mOptions->bestRead.enabled) {
+        ofs << "," << endl;
+        ofs << "\t\t" << "\"best_read_selection\": {" << endl;
+        ofs << "\t\t\t" << "\"mode\":\"" << (mOptions->bestRead.bestReadsSpecified ? "best_reads" : "best_bases") << "\"," << endl;
+        ofs << "\t\t\t" << "\"best_reads\":" << (mOptions->bestRead.bestReadsSpecified ? mOptions->bestRead.bestReads : 0) << "," << endl;
+        ofs << "\t\t\t" << "\"best_bases\":" << (mOptions->bestRead.bestBasesSpecified ? mOptions->bestRead.bestBases : 0) << "," << endl;
+        ofs << "\t\t\t" << "\"candidate_reads\":" << mOptions->bestRead.candidateReads << "," << endl;
+        ofs << "\t\t\t" << "\"candidate_bases\":" << mOptions->bestRead.candidateBases << "," << endl;
+        ofs << "\t\t\t" << "\"selected_reads\":" << mOptions->bestRead.selectedReads << "," << endl;
+        ofs << "\t\t\t" << "\"selected_bases\":" << mOptions->bestRead.selectedBases << endl;
+        ofs << "\t\t" << "}";
     }
 
     ofs << endl;

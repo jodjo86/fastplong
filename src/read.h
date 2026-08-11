@@ -63,6 +63,7 @@ public:
 struct ReadPack {
     Read** data;
     int count;
+    long start;
 };
 
 typedef struct ReadPack ReadPack;

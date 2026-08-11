@@ -37,8 +37,10 @@ public:
     void addReadTrimmed(int bases);
     void addPolyXTrimmed(int base, int length);
     void addSamplingDropped(int bases);
+    void addBestReadCandidate(unsigned long long key, double score, int length);
     long getSamplingDroppedReads() {return mSamplingDroppedReads;}
     long getSamplingDroppedBases() {return mSamplingDroppedBases;}
+    vector<BestReadRecord>& getBestReadCandidates() {return mBestReadCandidates;}
     long getTotalPolyXTrimmedReads();
     long getTotalPolyXTrimmedBases();
     // a part of JSON report
@@ -63,6 +65,7 @@ private:
     long mTrimmedAdapterBases;
     long mSamplingDroppedReads;
     long mSamplingDroppedBases;
+    vector<BestReadRecord> mBestReadCandidates;
     long mTrimmedPolyXReads[4] = {0};
     long mTrimmedPolyXBases[4] = {0};
     map<string, long, classcomp> mAdapter;
