@@ -33,6 +33,7 @@ public:
     // a port of HTML report
     void reporHtmlMedianQualLengthDensity(ofstream& ofs, string filteringType);
     void reporHtmlMedianQualHist(ofstream& ofs, string filteringType);
+    void reportHtmlLongReadQC(ofstream& ofs, string filteringType);
     void reportHtmlBasicInfo(ofstream& ofs, string filteringType);
     void reportHtmlQuality(ofstream& ofs, string filteringType);
     void reportHtmlContents(ofstream& ofs, string filteringType);
@@ -49,6 +50,12 @@ public:
 
 private:
     void extendBuffer(int newBufLen);
+    void makeLengthBins(vector<long>& starts, vector<long>& ends, vector<long>& readCounts, vector<long>& baseCounts);
+    void reportJsonLongReadQC(ofstream& ofs, string padding);
+    void reportHtmlLengthDistribution(ofstream& ofs, string filteringType);
+    void reportHtmlLengthCumulative(ofstream& ofs, string filteringType);
+    void reportHtmlReadGCHist(ofstream& ofs, string filteringType);
+    void reportHtmlMeanReadQualityHist(ofstream& ofs, string filteringType);
     string makeKmerTD(int i, int j);
     string kmer3(int val);
     string kmer2(int val);
@@ -77,6 +84,10 @@ private:
     long mBaseQualHistogram[128];
     long mMedianReadQualHistogram[128];
     long mMedianReadQualBases[128];
+    long mMeanReadQualHistogram[128];
+    long mMeanReadQualBases[128];
+    long mReadGCHistogram[101];
+    long mReadGCBases[101];
 
     map<string, double*> mQualityCurves;
     map<string, double*> mContentCurves;

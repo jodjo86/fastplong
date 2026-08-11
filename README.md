@@ -44,6 +44,7 @@ Both input and output can be gzip compressed. By default, the HTML report is sav
 
 # examples of report
 `fastplong` creates reports in both HTML and JSON format.
+The report includes long-read QC charts for read length distribution, cumulative yield by minimum read length, read GC content distribution, and read mean quality distribution before and after filtering.
 * HTML report: http://opengene.org/fastplong/fastplong.html
 * JSON report: http://opengene.org/fastplong/fastplong.json
 

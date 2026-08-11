@@ -1,6 +1,7 @@
 #include "stats.h"
 #include <memory.h>
 #include <sstream>
+#include <cmath>
 #include "util.h"
 #include "htmlreporter.h"
 
@@ -70,6 +71,10 @@ Stats::Stats(Options* opt, int guessedCycles, int bufferMargin){
     memset(mBaseQualHistogram, 0, sizeof(long)*128);
     memset(mMedianReadQualHistogram, 0, sizeof(long)*128);
     memset(mMedianReadQualBases, 0, sizeof(long)*128);
+    memset(mMeanReadQualHistogram, 0, sizeof(long)*128);
+    memset(mMeanReadQualBases, 0, sizeof(long)*128);
+    memset(mReadGCHistogram, 0, sizeof(long)*101);
+    memset(mReadGCBases, 0, sizeof(long)*101);
 }
 
 void Stats::extendBuffer(int newBufLen){
@@ -280,6 +285,8 @@ void Stats::statRead(Read* r) {
     memset(qualHist, 0, sizeof(int)*128);
 
     int kmer = 0;
+    int totalQual = 0;
+    int gcNum = 0;
     bool needFullCompute = true;
     for(int i=0; i<len; i++) {
         char base = seqstr[i];
@@ -292,6 +299,10 @@ void Stats::statRead(Read* r) {
 
         mBaseQualHistogram[qual]++;
         qualHist[qual]++;
+        totalQual += qual - 33;
+
+        if(base == 'G' || base == 'C' || base == 'g' || base == 'c')
+            gcNum++;
 
         if(qual >= q30) {
             mCycleQ30Bases[b][i]++;
@@ -368,6 +379,19 @@ void Stats::statRead(Read* r) {
         }
         mQualLength[median].push_back(len);
     }
+
+    int meanQual = 0;
+    int gcPercent = 0;
+    if(len > 0) {
+        meanQual = (int)((double)totalQual / (double)len + 0.5);
+        meanQual = max(0, min(127, meanQual));
+        gcPercent = (int)((double)gcNum * 100.0 / (double)len + 0.5);
+        gcPercent = max(0, min(100, gcPercent));
+    }
+    mMeanReadQualHistogram[meanQual]++;
+    mMeanReadQualBases[meanQual] += len;
+    mReadGCHistogram[gcPercent]++;
+    mReadGCBases[gcPercent] += len;
 
     delete[] qualHist;
 
@@ -525,6 +549,11 @@ void Stats::reportJson(ofstream& ofs, string padding) {
     }
     ofs << padding << "\t" << "}," << endl;
 
+    // long-read QC summaries
+    ofs << padding << "\t" << "\"long_read_qc\": ";
+    reportJsonLongReadQC(ofs, padding + "\t");
+    ofs << "," << endl;
+
     // KMER counting
     ofs << padding << "\t" << "\"kmer_count\": {" << endl;
     for(int i=0; i<64; i++) {
@@ -581,6 +610,142 @@ string Stats::list2string(T* list, long size) {
             ss << ",";
     }
     return ss.str();
+}
+
+void Stats::makeLengthBins(vector<long>& starts, vector<long>& ends, vector<long>& readCounts, vector<long>& baseCounts) {
+    if(mNeedCalcLength)
+        calcLengthHistogram();
+    if(mReads <= 0 || mMaxLen <= 0)
+        return;
+
+    const int maxBins = 80;
+    long minLen = max(1, mMinLen);
+    long maxLen = max(1, mMaxLen);
+
+    if(maxLen - minLen + 1 <= maxBins) {
+        for(long len = minLen; len <= maxLen; len++) {
+            starts.push_back(len);
+            ends.push_back(len);
+        }
+    } else if(isLongRead() && maxLen > minLen) {
+        double logMin = log((double)minLen);
+        double logMax = log((double)maxLen + 1.0);
+        long start = minLen;
+        for(int i=0; i<maxBins && start <= maxLen; i++) {
+            long end = (long)floor(exp(logMin + (logMax - logMin) * (double)(i + 1) / (double)maxBins)) - 1;
+            if(i == maxBins - 1)
+                end = maxLen;
+            if(end < start)
+                end = start;
+            if(end > maxLen)
+                end = maxLen;
+            starts.push_back(start);
+            ends.push_back(end);
+            start = end + 1;
+        }
+        if(ends.empty() || ends.back() < maxLen) {
+            starts.push_back(ends.empty() ? minLen : ends.back() + 1);
+            ends.push_back(maxLen);
+        }
+    } else {
+        long width = (maxLen - minLen + maxBins) / maxBins;
+        if(width < 1)
+            width = 1;
+        for(long start = minLen; start <= maxLen; start += width) {
+            starts.push_back(start);
+            ends.push_back(min(maxLen, start + width - 1));
+        }
+    }
+
+    readCounts.assign(starts.size(), 0);
+    baseCounts.assign(starts.size(), 0);
+    size_t bin = 0;
+    map<int, int>::iterator iter;
+    for(iter = mLengthHist.begin(); iter != mLengthHist.end(); iter++) {
+        long len = iter->first;
+        long count = iter->second;
+        while(bin < ends.size() && len > ends[bin])
+            bin++;
+        if(bin >= ends.size())
+            break;
+        if(len >= starts[bin]) {
+            readCounts[bin] += count;
+            baseCounts[bin] += count * len;
+        }
+    }
+}
+
+void Stats::reportJsonLongReadQC(ofstream& ofs, string padding) {
+    vector<long> starts;
+    vector<long> ends;
+    vector<long> readCounts;
+    vector<long> baseCounts;
+    makeLengthBins(starts, ends, readCounts, baseCounts);
+
+    vector<long> centers(starts.size(), 0);
+    vector<long> cumulativeReads(starts.size(), 0);
+    vector<long> cumulativeBases(starts.size(), 0);
+    long reads = 0;
+    long bases = 0;
+    for(int i=(int)starts.size()-1; i>=0; i--) {
+        centers[i] = (starts[i] + ends[i]) / 2;
+        reads += readCounts[i];
+        bases += baseCounts[i];
+        cumulativeReads[i] = reads;
+        cumulativeBases[i] = bases;
+    }
+
+    long gcX[101];
+    for(int i=0; i<=100; i++)
+        gcX[i] = i;
+
+    vector<long> qualX;
+    vector<long> qualReads;
+    vector<long> qualBases;
+    if(mReads > 0) {
+        int qualMin = 0;
+        int qualMax = 0;
+        while(qualMin < 127 && mMeanReadQualHistogram[qualMin] == 0 && mMeanReadQualBases[qualMin] == 0)
+            qualMin++;
+        for(int i=127; i>=0; i--) {
+            if(mMeanReadQualHistogram[i] > 0 || mMeanReadQualBases[i] > 0) {
+                qualMax = i;
+                break;
+            }
+        }
+        if(qualMax < qualMin)
+            qualMax = qualMin;
+        for(int q=qualMin; q<=qualMax; q++) {
+            qualX.push_back(q);
+            qualReads.push_back(mMeanReadQualHistogram[q]);
+            qualBases.push_back(mMeanReadQualBases[q]);
+        }
+    }
+
+    ofs << "{" << endl;
+    ofs << padding << "\t" << "\"read_length_distribution\": {" << endl;
+    ofs << padding << "\t\t" << "\"start\":[" << list2string(starts.data(), starts.size()) << "]," << endl;
+    ofs << padding << "\t\t" << "\"end\":[" << list2string(ends.data(), ends.size()) << "]," << endl;
+    ofs << padding << "\t\t" << "\"center\":[" << list2string(centers.data(), centers.size()) << "]," << endl;
+    ofs << padding << "\t\t" << "\"read_count\":[" << list2string(readCounts.data(), readCounts.size()) << "]," << endl;
+    ofs << padding << "\t\t" << "\"base_count\":[" << list2string(baseCounts.data(), baseCounts.size()) << "]" << endl;
+    ofs << padding << "\t" << "}," << endl;
+    ofs << padding << "\t" << "\"read_length_cumulative\": {" << endl;
+    ofs << padding << "\t\t" << "\"min_length\":[" << list2string(starts.data(), starts.size()) << "]," << endl;
+    ofs << padding << "\t\t" << "\"read_count\":[" << list2string(cumulativeReads.data(), cumulativeReads.size()) << "]," << endl;
+    ofs << padding << "\t\t" << "\"base_count\":[" << list2string(cumulativeBases.data(), cumulativeBases.size()) << "]" << endl;
+    ofs << padding << "\t" << "}," << endl;
+    ofs << padding << "\t" << "\"read_gc_content_histogram\": {" << endl;
+    ofs << padding << "\t\t" << "\"gc_percent\":[" << list2string(gcX, 101) << "]," << endl;
+    ofs << padding << "\t\t" << "\"read_count\":[" << list2string(mReadGCHistogram, 101) << "]," << endl;
+    ofs << padding << "\t\t" << "\"base_count\":[" << list2string(mReadGCBases, 101) << "]" << endl;
+    ofs << padding << "\t" << "}," << endl;
+    ofs << padding << "\t" << "\"read_mean_quality_histogram\": {" << endl;
+    ofs << padding << "\t\t" << "\"mean_quality\":[" << list2string(qualX.data(), qualX.size()) << "]," << endl;
+    ofs << padding << "\t\t" << "\"read_count\":[" << list2string(qualReads.data(), qualReads.size()) << "]," << endl;
+    ofs << padding << "\t\t" << "\"base_count\":[" << list2string(qualBases.data(), qualBases.size()) << "]" << endl;
+    ofs << padding << "\t" << "}" << endl;
+    ofs << padding << "}";
 }
 
 bool Stats::isLongRead() {
@@ -714,6 +879,201 @@ void Stats::reporHtmlMedianQualLengthDensity(ofstream& ofs, string filteringType
 
     delete[] x;
     delete[] y;
+}
+
+void Stats::reportHtmlLongReadQC(ofstream& ofs, string filteringType) {
+    reportHtmlLengthDistribution(ofs, filteringType);
+    reportHtmlLengthCumulative(ofs, filteringType);
+    reportHtmlReadGCHist(ofs, filteringType);
+    reportHtmlMeanReadQualityHist(ofs, filteringType);
+}
+
+void Stats::reportHtmlLengthDistribution(ofstream& ofs, string filteringType) {
+    string subsection = filteringType + ": Read length distribution";
+    string divName = replace(subsection, " ", "_");
+    divName = replace(divName, ":", "_");
+
+    vector<long> starts;
+    vector<long> ends;
+    vector<long> readCounts;
+    vector<long> baseCounts;
+    makeLengthBins(starts, ends, readCounts, baseCounts);
+
+    vector<long> centers(starts.size(), 0);
+    vector<double> readPercents(starts.size(), 0.0);
+    vector<double> basePercents(starts.size(), 0.0);
+    for(size_t i=0; i<starts.size(); i++) {
+        centers[i] = (starts[i] + ends[i]) / 2;
+        if(mReads > 0)
+            readPercents[i] = (double)readCounts[i] * 100.0 / (double)mReads;
+        if(mBases > 0)
+            basePercents[i] = (double)baseCounts[i] * 100.0 / (double)mBases;
+    }
+
+    ofs << "<div class='subsection_title'>" + subsection + "</div>\n";
+    ofs << "<div id='" + divName + "'>\n";
+    ofs << "<div class='sub_section_tips'>Read and base percentages are shown by read length bins.</div>\n";
+    ofs << "<div class='figure' id='plot_" + divName + "' style='height:420px;'></div>\n";
+    ofs << "</div>\n";
+
+    ofs << "\n<script type=\"text/javascript\">" << endl;
+    string json_str = "var readLengthReads={";
+    json_str += "x:[" + list2string(centers.data(), centers.size()) + "],";
+    json_str += "y:[" + list2string(readPercents.data(), readPercents.size()) + "],";
+    json_str += "name:'% reads',type:'scatter',mode:'lines+markers',line:{color:'rgb(73,120,180)',width:2},marker:{color:'rgb(73,120,180)',size:5}};\n";
+    json_str += "var readLengthBases={";
+    json_str += "x:[" + list2string(centers.data(), centers.size()) + "],";
+    json_str += "y:[" + list2string(basePercents.data(), basePercents.size()) + "],";
+    json_str += "name:'% bases',type:'scatter',mode:'lines+markers',line:{color:'rgb(77,156,96)',width:2},marker:{color:'rgb(77,156,96)',size:5}};\n";
+    json_str += "var data=[readLengthReads,readLengthBases];\n";
+    json_str += "var layout={title:'Read length distribution',xaxis:{title:'read length'";
+    if(isLongRead())
+        json_str += ",type:'log'";
+    json_str += "},yaxis:{title:'Percent (%)',rangemode:'tozero'}};\n";
+    json_str += "Plotly.newPlot('plot_" + divName + "', data, layout);\n";
+    ofs << json_str;
+    ofs << "</script>" << endl;
+}
+
+void Stats::reportHtmlLengthCumulative(ofstream& ofs, string filteringType) {
+    string subsection = filteringType + ": Cumulative yield by minimum read length";
+    string divName = replace(subsection, " ", "_");
+    divName = replace(divName, ":", "_");
+
+    vector<long> starts;
+    vector<long> ends;
+    vector<long> readCounts;
+    vector<long> baseCounts;
+    makeLengthBins(starts, ends, readCounts, baseCounts);
+
+    vector<double> cumulativeReads(starts.size(), 0.0);
+    vector<double> cumulativeBases(starts.size(), 0.0);
+    long reads = 0;
+    long bases = 0;
+    for(int i=(int)starts.size()-1; i>=0; i--) {
+        reads += readCounts[i];
+        bases += baseCounts[i];
+        if(mReads > 0)
+            cumulativeReads[i] = (double)reads * 100.0 / (double)mReads;
+        if(mBases > 0)
+            cumulativeBases[i] = (double)bases * 100.0 / (double)mBases;
+    }
+
+    ofs << "<div class='subsection_title'>" + subsection + "</div>\n";
+    ofs << "<div id='" + divName + "'>\n";
+    ofs << "<div class='sub_section_tips'>Shows how many reads and bases remain when requiring reads to be at least the x-axis length.</div>\n";
+    ofs << "<div class='figure' id='plot_" + divName + "' style='height:420px;'></div>\n";
+    ofs << "</div>\n";
+
+    ofs << "\n<script type=\"text/javascript\">" << endl;
+    string json_str = "var retainedReads={";
+    json_str += "x:[" + list2string(starts.data(), starts.size()) + "],";
+    json_str += "y:[" + list2string(cumulativeReads.data(), cumulativeReads.size()) + "],";
+    json_str += "name:'retained reads %',mode:'lines',line:{color:'rgba(73,120,180,1.0)',width:2}};\n";
+    json_str += "var retainedBases={";
+    json_str += "x:[" + list2string(starts.data(), starts.size()) + "],";
+    json_str += "y:[" + list2string(cumulativeBases.data(), cumulativeBases.size()) + "],";
+    json_str += "name:'retained bases %',mode:'lines',line:{color:'rgba(77,156,96,1.0)',width:2}};\n";
+    json_str += "var data=[retainedReads,retainedBases];\n";
+    json_str += "var layout={title:'Cumulative yield by minimum read length',xaxis:{title:'minimum read length'";
+    if(isLongRead())
+        json_str += ",type:'log'";
+    json_str += "},yaxis:{title:'Retained percent (%)',range:[0,100]}};\n";
+    json_str += "Plotly.newPlot('plot_" + divName + "', data, layout);\n";
+    ofs << json_str;
+    ofs << "</script>" << endl;
+}
+
+void Stats::reportHtmlReadGCHist(ofstream& ofs, string filteringType) {
+    string subsection = filteringType + ": Read GC content distribution";
+    string divName = replace(subsection, " ", "_");
+    divName = replace(divName, ":", "_");
+
+    long x[101];
+    double readPercents[101];
+    double basePercents[101];
+    for(int i=0; i<=100; i++) {
+        x[i] = i;
+        readPercents[i] = mReads == 0 ? 0.0 : (double)mReadGCHistogram[i] * 100.0 / (double)mReads;
+        basePercents[i] = mBases == 0 ? 0.0 : (double)mReadGCBases[i] * 100.0 / (double)mBases;
+    }
+
+    ofs << "<div class='subsection_title'>" + subsection + "</div>\n";
+    ofs << "<div id='" + divName + "'>\n";
+    ofs << "<div class='sub_section_tips'>GC content is calculated per read after trimming.</div>\n";
+    ofs << "<div class='figure' id='plot_" + divName + "' style='height:420px;'></div>\n";
+    ofs << "</div>\n";
+
+    ofs << "\n<script type=\"text/javascript\">" << endl;
+    string json_str = "var gcReads={";
+    json_str += "x:[" + list2string(x, 101) + "],";
+    json_str += "y:[" + list2string(readPercents, 101) + "],";
+    json_str += "name:'% reads',type:'bar',marker:{color:'rgba(73,120,180,0.85)'}};\n";
+    json_str += "var gcBases={";
+    json_str += "x:[" + list2string(x, 101) + "],";
+    json_str += "y:[" + list2string(basePercents, 101) + "],";
+    json_str += "name:'% bases',type:'bar',marker:{color:'rgba(192,105,77,0.75)'}};\n";
+    json_str += "var data=[gcReads,gcBases];\n";
+    json_str += "var layout={title:'Read GC content distribution',barmode:'group',xaxis:{title:'read GC content (%)'},yaxis:{title:'Percent (%)'}};\n";
+    json_str += "Plotly.newPlot('plot_" + divName + "', data, layout);\n";
+    ofs << json_str;
+    ofs << "</script>" << endl;
+}
+
+void Stats::reportHtmlMeanReadQualityHist(ofstream& ofs, string filteringType) {
+    string subsection = filteringType + ": Read mean quality distribution";
+    string divName = replace(subsection, " ", "_");
+    divName = replace(divName, ":", "_");
+
+    vector<long> x;
+    vector<double> readPercents;
+    vector<double> basePercents;
+    if(mReads > 0) {
+        int minQual = 0;
+        int maxQual = 0;
+        while(minQual < 127 && mMeanReadQualHistogram[minQual] == 0 && mMeanReadQualBases[minQual] == 0)
+            minQual++;
+        for(int i=127; i>=0; i--) {
+            if(mMeanReadQualHistogram[i] > 0 || mMeanReadQualBases[i] > 0) {
+                maxQual = i;
+                break;
+            }
+        }
+        if(maxQual < minQual)
+            maxQual = minQual;
+
+        int total = maxQual - minQual + 1;
+        x.assign(total, 0);
+        readPercents.assign(total, 0.0);
+        basePercents.assign(total, 0.0);
+        for(int i=0; i<total; i++) {
+            int qual = minQual + i;
+            x[i] = qual;
+            readPercents[i] = (double)mMeanReadQualHistogram[qual] * 100.0 / (double)mReads;
+            basePercents[i] = mBases == 0 ? 0.0 : (double)mMeanReadQualBases[qual] * 100.0 / (double)mBases;
+        }
+    }
+
+    ofs << "<div class='subsection_title'>" + subsection + "</div>\n";
+    ofs << "<div id='" + divName + "'>\n";
+    ofs << "<div class='sub_section_tips'>Mean quality is calculated for each read after trimming.</div>\n";
+    ofs << "<div class='figure' id='plot_" + divName + "' style='height:420px;'></div>\n";
+    ofs << "</div>\n";
+
+    ofs << "\n<script type=\"text/javascript\">" << endl;
+    string json_str = "var meanQualReads={";
+    json_str += "x:[" + list2string(x.data(), x.size()) + "],";
+    json_str += "y:[" + list2string(readPercents.data(), readPercents.size()) + "],";
+    json_str += "name:'% reads',type:'bar',marker:{color:'rgba(73,120,180,0.85)'}};\n";
+    json_str += "var meanQualBases={";
+    json_str += "x:[" + list2string(x.data(), x.size()) + "],";
+    json_str += "y:[" + list2string(basePercents.data(), basePercents.size()) + "],";
+    json_str += "name:'% bases',type:'bar',marker:{color:'rgba(102,82,163,0.75)'}};\n";
+    json_str += "var data=[meanQualReads,meanQualBases];\n";
+    json_str += "var layout={title:'Read mean quality distribution',barmode:'group',xaxis:{title:'read mean quality score'},yaxis:{title:'Percent (%)'}};\n";
+    json_str += "Plotly.newPlot('plot_" + divName + "', data, layout);\n";
+    ofs << json_str;
+    ofs << "</script>" << endl;
 }
 
 
@@ -1062,6 +1422,14 @@ Stats* Stats::merge(vector<Stats*>& list) {
             s->mBaseQualHistogram[i] += list[t]->mBaseQualHistogram[i];
             s->mMedianReadQualHistogram[i] += list[t]->mMedianReadQualHistogram[i];
             s->mMedianReadQualBases[i] += list[t]->mMedianReadQualBases[i];
+            s->mMeanReadQualHistogram[i] += list[t]->mMeanReadQualHistogram[i];
+            s->mMeanReadQualBases[i] += list[t]->mMeanReadQualBases[i];
+        }
+
+        // merge read GC histogram
+        for(int i=0; i<=100; i++) {
+            s->mReadGCHistogram[i] += list[t]->mReadGCHistogram[i];
+            s->mReadGCBases[i] += list[t]->mReadGCBases[i];
         }
 
         // merge qual-length distribution
