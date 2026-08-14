@@ -137,6 +137,113 @@ vector<pair<int, int>> Filter::detectLowQualityRegions(Read* r, int windowSize, 
     return results;
 }
 
+Read* Filter::keepBestReadSegment(Read* r, int windowSize, int quality, int& trimmedBases) {
+    trimmedBases = 0;
+    if(r == NULL || r->length() <= 0)
+        return NULL;
+
+    int readLen = r->length();
+    const char* qualstr = r->mQuality->c_str();
+    vector<pair<int, int>> lowQualRegions;
+    if(readLen < windowSize) {
+        long totalQual = 0;
+        for(int i=0; i<readLen; i++)
+            totalQual += qualstr[i] - 33;
+        if((double)totalQual / (double)readLen < quality)
+            return NULL;
+        return r;
+    }
+
+    long windowQual = 0;
+    for(int i=0; i<windowSize; i++)
+        windowQual += qualstr[i] - 33;
+    for(int start=0; start + windowSize <= readLen; start++) {
+        if(start > 0) {
+            windowQual -= qualstr[start - 1] - 33;
+            windowQual += qualstr[start + windowSize - 1] - 33;
+        }
+        if((double)windowQual / (double)windowSize < quality) {
+            int lowStart = start;
+            int lowEnd = start + windowSize - 1;
+            if(!lowQualRegions.empty() && lowStart <= lowQualRegions.back().second + 1) {
+                lowQualRegions.back().second = lowEnd;
+            } else {
+                lowQualRegions.push_back(make_pair(lowStart, lowEnd));
+            }
+        }
+    }
+    if(lowQualRegions.empty())
+        return r;
+
+    vector<pair<int, int>> refinedLowQualRegions;
+    for(size_t i=0; i<lowQualRegions.size(); i++) {
+        int start = lowQualRegions[i].first;
+        int end = lowQualRegions[i].second;
+        while(start <= end && qualstr[start] - 33 >= quality)
+            start++;
+        while(end >= start && qualstr[end] - 33 >= quality)
+            end--;
+        if(start <= end)
+            refinedLowQualRegions.push_back(make_pair(start, end));
+    }
+    lowQualRegions = refinedLowQualRegions;
+    if(lowQualRegions.empty())
+        return r;
+
+    vector<pair<int, int>> segments;
+    int lastEnd = -1;
+    for(size_t i=0; i<lowQualRegions.size(); i++) {
+        int start = max(0, lowQualRegions[i].first);
+        int end = min(readLen - 1, lowQualRegions[i].second);
+        if(start > lastEnd + 1)
+            segments.push_back(make_pair(lastEnd + 1, start - 1));
+        lastEnd = max(lastEnd, end);
+    }
+    if(lastEnd < readLen - 1)
+        segments.push_back(make_pair(lastEnd + 1, readLen - 1));
+
+    if(segments.empty())
+        return NULL;
+
+    int bestStart = -1;
+    int bestEnd = -1;
+    double bestMeanQual = -1.0;
+    int bestLength = 0;
+    for(size_t i=0; i<segments.size(); i++) {
+        int start = segments[i].first;
+        int end = segments[i].second;
+        if(start < 0 || end >= readLen || start > end)
+            continue;
+        long totalQual = 0;
+        for(int p=start; p<=end; p++)
+            totalQual += qualstr[p] - 33;
+        int len = end - start + 1;
+        double meanQual = (double)totalQual / (double)len;
+        if(meanQual > bestMeanQual ||
+           (meanQual == bestMeanQual && len > bestLength) ||
+           (meanQual == bestMeanQual && len == bestLength && start < bestStart)) {
+            bestMeanQual = meanQual;
+            bestLength = len;
+            bestStart = start;
+            bestEnd = end;
+        }
+    }
+
+    if(bestStart < 0 || bestEnd < bestStart)
+        return NULL;
+
+    trimmedBases = readLen - bestLength;
+    if(trimmedBases <= 0)
+        return r;
+
+    string* seq = new string(*r->mSeq, bestStart, bestLength);
+    string* qual = new string(*r->mQuality, bestStart, bestLength);
+    string* name = new string(*r->mName);
+    name->insert(1, "best-segment-");
+    string* strand = new string(*r->mStrand);
+    return new Read(name, seq, strand, qual);
+}
+
 Read* Filter::trimAndCut(Read* r, int front, int tail, int& frontTrimmed) {
     frontTrimmed = 0;
     // return the same read for speed if no change needed

@@ -82,6 +82,9 @@ int main(int argc, char* argv[]){
     cmd.add("break", 'b', "break the reads by discarding the low quality regions, these regions are detected by sliding window with mean quality < break_mean_quality.");
     cmd.add<int>("break_window_size", 0, "the size of the sliding window to evaluate the mean quality for sliding window breaking(5~1000000), default: 100", false, 100);
     cmd.add<int>("break_mean_quality", 0, "the mean quality requirement for sliding window breaking (5~30), default: 10 (Q10)", false, 10);
+    cmd.add("best_read_segment", 0, "keep only the best high-quality continuous segment from each read. Low-quality regions are detected by sliding window.");
+    cmd.add<int>("best_read_segment_window_size", 0, "the window size option of best-read-segment mode (5~1000000), default: 100", false, 100);
+    cmd.add<int>("best_read_segment_mean_quality", 0, "the mean quality requirement for best-read-segment mode (5~30), default: 10 (Q10)", false, 10);
 
     // quality filtering
     cmd.add("disable_quality_filtering", 'Q', "quality filtering is enabled by default. If this option is specified, quality filtering is disabled");
@@ -245,6 +248,9 @@ int main(int argc, char* argv[]){
     opt.breakOpt.enabled = cmd.exist("break");
     opt.breakOpt.windowSize = cmd.get<int>("break_window_size");
     opt.breakOpt.quality = cmd.get<int>("break_mean_quality");
+    opt.bestReadSegment.enabled = cmd.exist("best_read_segment");
+    opt.bestReadSegment.windowSize = cmd.get<int>("best_read_segment_window_size");
+    opt.bestReadSegment.quality = cmd.get<int>("best_read_segment_mean_quality");
 
     // threading
     opt.thread = cmd.get<int>("thread");

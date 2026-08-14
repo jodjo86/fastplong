@@ -240,6 +240,16 @@ bool Options::validate() {
             error_exit("the mean quality requirement for cutting by quality (--cut_tail_mean_quality) should be 1 ~ 30, suggest 13 ~ 20.");
     }
 
+    if(bestReadSegment.enabled && breakOpt.enabled)
+        error_exit("--best_read_segment cannot work together with --break");
+
+    if(bestReadSegment.enabled) {
+        if(bestReadSegment.windowSize < 5 || bestReadSegment.windowSize > 1000000)
+            error_exit("the window size for best-read-segment mode (--best_read_segment_window_size) should be between 5~1000000.");
+        if(bestReadSegment.quality < 5 || bestReadSegment.quality > 30)
+            error_exit("the mean quality requirement for best-read-segment mode (--best_read_segment_mean_quality) should be 5 ~ 30.");
+    }
+
     if(adapter.sequenceStart!="auto" && !adapter.sequenceStart.empty()) {
         // validate adapter sequence for single end adapter trimming
         if(adapter.sequenceStart.length() <= 3)

@@ -17,6 +17,7 @@ public:
     int passFilter(Read* r);
     bool passLowComplexityFilter(Read* r);
     Read* trimAndCut(Read* r, int front, int tail, int& frontTrimmed);
+    Read* keepBestReadSegment(Read* r, int windowSize, int quality, int& trimmedBases);
     //return all (start, end) pairs (0-based, inclusive) whose mean quality < quality in the read
     vector<pair<int, int>> detectLowQualityRegions(Read* r, int windowSize, int quality);
 

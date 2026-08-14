@@ -28,6 +28,7 @@ fastplong supports batch processing of multiple FASTQ files in a folder, see - [
 - [adapters](#adapters)
 - [per read cutting by quality score](#per-read-cutting-by-quality-score)
 - [break read to subreads by discarding low quality regions](#break-read-to-subreads-by-discarding-low-quality-regions)
+- [best read segment](#best-read-segment)
 - [mask low quality regions with N](#mask-low-quality-regions-with-n)
 - [global trimming](#global-trimming)
 - [output splitting](#output-splitting)
@@ -202,6 +203,11 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 The subreads will have names like `@r1-original-name`, `@r2-original-name`..., and each subread will be quality checked and filtered separately.  
 WARNING: This may result in significant data loss. If you want to keep more data, please lower the mean quality requirement or improve the sliding window size.
 
+# best read segment
+`fastplong` can keep only the best high-quality continuous segment from each read. Specify `--best_read_segment` to enable this feature. Low-quality regions are detected by a sliding window, candidate high-quality segments are scored by mean Phred quality, and only the best segment from each read is retained. You can adjust the sliding window size by `--best_read_segment_window_size`, and adjust the mean quality requirement by `--best_read_segment_mean_quality`.
+
+This mode is different from `--break`: `--break` may output multiple subreads from one read, while `--best_read_segment` outputs at most one segment per input read. `--best_read_segment` cannot be used together with `--break`.
+
 # mask low quality regions with N
 `fastplong` can detect low quality regions and replace the bases in these regions with N base. Specify `-N` or `--mask` to enable this feature. You can adjust the sliding window size by `--mask_window_size`, and adjust the mean quality requirement by `mask_mean_quality`.  
 WARNING: This may cause many reads failed to pass the N base limit filter. If you want to keep more data, you can lower the mean quality requirement, improve the sliding window size or adjust the N base percent limit `--n_percent_limit`.  
@@ -292,6 +298,11 @@ options:
   -b, --break                        break the reads by discarding the low quality regions, these regions are detected by sliding window with mean quality < break_mean_quality.
       --break_window_size            the size of the sliding window to evaluate the mean quality for sliding window breaking(5~1000000), default: 100 (int [=100])
       --break_mean_quality           the mean quality requirement for sliding window breaking (5~30), default: 10 (Q10) (int [=10])
+      --best_read_segment            keep only the best high-quality continuous segment from each read. Low-quality regions are detected by sliding window.
+      --best_read_segment_window_size
+                                      the window size option of best-read-segment mode (5~1000000), default: 100 (int [=100])
+      --best_read_segment_mean_quality
+                                      the mean quality requirement for best-read-segment mode (5~30), default: 10 (Q10) (int [=10])
   -Q, --disable_quality_filtering    quality filtering is enabled by default. If this option is specified, quality filtering is disabled
   -q, --qualified_quality_phred      the quality value that a base is qualified. Default 15 means phred quality >=Q15 is qualified. (int [=15])
   -u, --unqualified_percent_limit    how many percents of bases are allowed to be unqualified (0~100). Default 40 means 40% (int [=40])

@@ -10,6 +10,8 @@ FilterResult::FilterResult(Options* opt, bool paired){
     mTrimmedAdapterBases = 0;
     mSamplingDroppedReads = 0;
     mSamplingDroppedBases = 0;
+    mBestReadSegmentTrimmedReads = 0;
+    mBestReadSegmentTrimmedBases = 0;
     for(int i=0; i<FILTER_RESULT_TYPES; i++) {
         mFilterReadStats[i] = 0;
     }
@@ -43,6 +45,8 @@ FilterResult* FilterResult::merge(vector<FilterResult*>& list) {
         result->mTrimmedAdapterBases += list[i]->mTrimmedAdapterBases;
         result->mSamplingDroppedReads += list[i]->mSamplingDroppedReads;
         result->mSamplingDroppedBases += list[i]->mSamplingDroppedBases;
+        result->mBestReadSegmentTrimmedReads += list[i]->mBestReadSegmentTrimmedReads;
+        result->mBestReadSegmentTrimmedBases += list[i]->mBestReadSegmentTrimmedBases;
         result->mBestReadCandidates.insert(result->mBestReadCandidates.end(), list[i]->mBestReadCandidates.begin(), list[i]->mBestReadCandidates.end());
 
         for(int b=0; b<4; b++) {
@@ -94,6 +98,13 @@ void FilterResult::addBestReadCandidate(unsigned long long key, double score, in
     mBestReadCandidates.push_back(BestReadRecord(key, score, length));
 }
 
+void FilterResult::addBestReadSegmentTrimmed(int bases) {
+    if(bases <= 0)
+        return;
+    mBestReadSegmentTrimmedReads++;
+    mBestReadSegmentTrimmedBases += bases;
+}
+
 long FilterResult::getTotalPolyXTrimmedReads() {
   long sum_reads = 0;
   for(int b = 0; b < 4; b++)
@@ -134,6 +145,10 @@ void FilterResult::print() {
         cerr <<  "selected reads by best read selection: " << mOptions->bestRead.selectedReads << endl;
         cerr <<  "selected bases by best read selection: " << mOptions->bestRead.selectedBases << endl;
     }
+    if(mOptions->bestReadSegment.enabled) {
+        cerr <<  "reads trimmed by best-read-segment mode: " << mBestReadSegmentTrimmedReads << endl;
+        cerr <<  "bases trimmed by best-read-segment mode: " << mBestReadSegmentTrimmedBases << endl;
+    }
     if(mOptions->adapter.enabled) {
         cerr <<  "reads with adapter trimmed: " << mTrimmedAdapterRead << endl;
         cerr <<  "bases trimmed due to adapters: " << mTrimmedAdapterBases << endl;
@@ -166,6 +181,10 @@ void FilterResult::reportJson(ofstream& ofs, string padding) {
         ofs << padding << "\t" << "\"best_selection_candidate_bases\": " << mOptions->bestRead.candidateBases << "," << endl;
         ofs << padding << "\t" << "\"best_selection_selected_reads\": " << mOptions->bestRead.selectedReads << "," << endl;
         ofs << padding << "\t" << "\"best_selection_selected_bases\": " << mOptions->bestRead.selectedBases << endl;
+    } else if(mOptions->bestReadSegment.enabled) {
+        ofs << "," << endl;
+        ofs << padding << "\t" << "\"best_read_segment_trimmed_reads\": " << mBestReadSegmentTrimmedReads << "," << endl;
+        ofs << padding << "\t" << "\"best_read_segment_trimmed_bases\": " << mBestReadSegmentTrimmedBases << endl;
     } else {
         ofs << endl;
     }
@@ -291,6 +310,10 @@ void FilterResult::reportHtml(ofstream& ofs, long totalReads, long totalBases) {
         HtmlReporter::outputRow(ofs, "candidate bases for best read selection:", HtmlReporter::formatNumber(mOptions->bestRead.candidateBases));
         HtmlReporter::outputRow(ofs, "selected reads by best read selection:", HtmlReporter::formatNumber(mOptions->bestRead.selectedReads));
         HtmlReporter::outputRow(ofs, "selected bases by best read selection:", HtmlReporter::formatNumber(mOptions->bestRead.selectedBases));
+    }
+    if(mOptions->bestReadSegment.enabled) {
+        HtmlReporter::outputRow(ofs, "reads trimmed by best-read-segment mode:", HtmlReporter::formatNumber(mBestReadSegmentTrimmedReads));
+        HtmlReporter::outputRow(ofs, "bases trimmed by best-read-segment mode:", HtmlReporter::formatNumber(mBestReadSegmentTrimmedBases) + " (" + HtmlReporter::getPercents(mBestReadSegmentTrimmedBases, totalBases) + "%)");
     }
     ofs << "</table>\n";
 }

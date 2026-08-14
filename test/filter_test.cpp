@@ -50,3 +50,38 @@ TEST(FilerTest, gcContentFilter) {
                  "IIIIIIIIIIIIIIIIIIII");
     EXPECT_EQ(filter.passFilter(&passing), PASS_FILTER);
 }
+
+TEST(FilerTest, bestReadSegment) {
+    Options opt;
+    Filter filter(&opt);
+
+    Read read("@segment",
+              "AAAACCCCGGGGTTTT",
+              "+",
+              "((((IIIIIIII((((");
+
+    int trimmedBases = 0;
+    Read* segment = filter.keepBestReadSegment(&read, 4, 20, trimmedBases);
+    ASSERT_NE(segment, nullptr);
+    EXPECT_NE(segment, &read);
+    EXPECT_EQ(*segment->mName, "@best-segment-segment");
+    EXPECT_EQ(*segment->mSeq, "CCCCGGGG");
+    EXPECT_EQ(*segment->mQuality, "IIIIIIII");
+    EXPECT_EQ(trimmedBases, 8);
+    delete segment;
+}
+
+TEST(FilerTest, bestReadSegmentNoChange) {
+    Options opt;
+    Filter filter(&opt);
+
+    Read read("@segment",
+              "AAAACCCCGGGG",
+              "+",
+              "IIIIIIIIIIII");
+
+    int trimmedBases = 0;
+    Read* segment = filter.keepBestReadSegment(&read, 4, 20, trimmedBases);
+    EXPECT_EQ(segment, &read);
+    EXPECT_EQ(trimmedBases, 0);
+}

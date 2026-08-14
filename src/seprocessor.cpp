@@ -308,6 +308,23 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
             outReads.push_back(r1);
         }
 
+        // keep only the best high-quality segment for each processed read
+        if(mOptions->bestReadSegment.enabled && outReads.size() > 0) {
+            vector<Read*> tmpReads;
+            for(int i=0; i<outReads.size(); i++) {
+                Read* rr = outReads[i];
+                int trimmedBases = 0;
+                Read* bestSegment = mFilter->keepBestReadSegment(rr, mOptions->bestReadSegment.windowSize, mOptions->bestReadSegment.quality, trimmedBases);
+                if(trimmedBases > 0)
+                    config->getFilterResult()->addBestReadSegmentTrimmed(trimmedBases);
+                if(bestSegment != NULL)
+                    tmpReads.push_back(bestSegment);
+                if(bestSegment != rr && rr != or1 && rr != r1 && rr != NULL)
+                    recycleToPool(tid, rr);
+            }
+            outReads = tmpReads;
+        }
+
         //break by low quality regions
         if(mOptions->breakOpt.enabled && outReads.size() > 0) {
             vector<Read*> tmpReads;

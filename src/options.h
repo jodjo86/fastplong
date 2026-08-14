@@ -45,6 +45,19 @@ public:
     int quality;
 };
 
+class BestReadSegmentOptions {
+public:
+    BestReadSegmentOptions() {
+        enabled = false;
+        windowSize = 100;
+        quality = 10;
+    }
+public:
+    bool enabled;
+    int windowSize;
+    int quality;
+};
+
 class LowComplexityFilterOptions {
 public:
     LowComplexityFilterOptions() {
@@ -328,6 +341,8 @@ public:
     MaskOptions mask;
     // break reads into high-quality fragments, and discard low-quality fragments
     BreakOptions breakOpt;
+    // keep the best high-quality segment from each read
+    BestReadSegmentOptions bestReadSegment;
     // output debug information
     bool verbose;
     // the buffer size for writer

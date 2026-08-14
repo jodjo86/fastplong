@@ -97,6 +97,13 @@ void JsonReporter::report(FilterResult* result, Stats* preStats1, Stats* postSta
         ofs << "\t\t\t" << "\"selected_bases\":" << mOptions->bestRead.selectedBases << endl;
         ofs << "\t\t" << "}";
     }
+    if(mOptions->bestReadSegment.enabled) {
+        ofs << "," << endl;
+        ofs << "\t\t" << "\"best_read_segment\": {" << endl;
+        ofs << "\t\t\t" << "\"window_size\":" << mOptions->bestReadSegment.windowSize << "," << endl;
+        ofs << "\t\t\t" << "\"mean_quality\":" << mOptions->bestReadSegment.quality << endl;
+        ofs << "\t\t" << "}";
+    }
 
     ofs << endl;
 

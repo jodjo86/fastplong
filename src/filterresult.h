@@ -38,6 +38,7 @@ public:
     void addPolyXTrimmed(int base, int length);
     void addSamplingDropped(int bases);
     void addBestReadCandidate(unsigned long long key, double score, int length);
+    void addBestReadSegmentTrimmed(int bases);
     long getSamplingDroppedReads() {return mSamplingDroppedReads;}
     long getSamplingDroppedBases() {return mSamplingDroppedBases;}
     vector<BestReadRecord>& getBestReadCandidates() {return mBestReadCandidates;}
@@ -65,6 +66,8 @@ private:
     long mTrimmedAdapterBases;
     long mSamplingDroppedReads;
     long mSamplingDroppedBases;
+    long mBestReadSegmentTrimmedReads;
+    long mBestReadSegmentTrimmedBases;
     vector<BestReadRecord> mBestReadCandidates;
     long mTrimmedPolyXReads[4] = {0};
     long mTrimmedPolyXBases[4] = {0};
