@@ -54,6 +54,9 @@ int main(int argc, char* argv[]){
     cmd.add<string>("adapter_fasta", 'a', "specify a FASTA file to trim both read by all the sequences in this FASTA file", false, "");
     cmd.add<double>("distance_threshold", 'd', "threshold of sequence-adapter-distance/adapter-length (0.0 ~ 1.0), greater value means more adapters detected", false, 0.25);
     cmd.add<int>("trimming_extension", 0, "when an adapter is detected, extend the trimming to make cleaner trimming, default 10 means trimming 10 bases more", false, 10);
+    cmd.add("disable_chimera_splitting", 0, "disable splitting reads by internal adapters/chimeric ligation signals.");
+    cmd.add("discard_chimeric_reads", 0, "discard reads containing internal adapters instead of splitting them into segments.");
+    cmd.add<int>("chimera_min_segment_length", 0, "minimum segment length retained after splitting internal adapters, default: 20", false, 20);
 
     // trimming
     cmd.add<int>("trim_front", 'f', "trimming how many bases in front for read, default is 0", false, 0);
@@ -163,6 +166,9 @@ int main(int argc, char* argv[]){
     opt.adapter.fastaFile = cmd.get<string>("adapter_fasta");
     opt.adapter.edMax = cmd.get<double>("distance_threshold");
     opt.adapter.trimmingExtension = cmd.get<int>("trimming_extension");
+    opt.adapter.splitChimera = !cmd.exist("disable_chimera_splitting");
+    opt.adapter.discardChimera = cmd.exist("discard_chimeric_reads");
+    opt.adapter.chimeraMinSegmentLength = cmd.get<int>("chimera_min_segment_length");
 
     // if the start adapter is specified and the end is not, use the reverse complement of start adapter
     if(opt.adapter.sequenceStart != "auto" && opt.adapter.sequenceEnd == "auto") {
@@ -297,6 +303,8 @@ int main(int argc, char* argv[]){
         error_exit("best read selection cannot work with output splitting mode");
     if(opt.bestRead.enabled && (opt.inputFromSTDIN || opt.in=="/dev/stdin"))
         error_exit("--best_reads/--best_bases are not supported in STDIN mode since they need to read the input twice");
+    if(opt.adapter.discardChimera && !opt.adapter.splitChimera)
+        error_exit("--discard_chimeric_reads cannot work together with --disable_chimera_splitting");
 
     stringstream ss;
     for(int i=0;i<argc;i++){

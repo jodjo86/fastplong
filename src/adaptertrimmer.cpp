@@ -39,6 +39,101 @@ bool AdapterTrimmer::findMiddleAdapters(Read* r, string& startAdater, string& en
     return false;
 }
 
+bool AdapterTrimmer::findNextMiddleAdapter(Read* r, vector<string>& adapters, int searchStart, int& adapterStart, int& adapterLength, double edMax) {
+    adapterStart = -1;
+    adapterLength = 0;
+    int readLen = r->length();
+    for(size_t i=0; i<adapters.size(); i++) {
+        if(adapters[i].empty())
+            continue;
+        int alen = adapters[i].length();
+        if(searchStart + alen > readLen)
+            continue;
+        int pos = searchAdapter(r->mSeq, adapters[i], edMax, searchStart, readLen - searchStart, true, false);
+        if(pos < 0)
+            continue;
+        if(adapterStart < 0 || pos < adapterStart || (pos == adapterStart && alen > adapterLength)) {
+            adapterStart = pos;
+            adapterLength = alen;
+        }
+    }
+    return adapterStart >= 0;
+}
+
+vector<Read*> AdapterTrimmer::splitByMiddleAdapters(Read* r, FilterResult* fr, vector<string>& adapters, double edMax, int trimmingExtension, int minSegmentLength, int* removedBases) {
+    vector<Read*> out;
+    if(removedBases)
+        *removedBases = 0;
+    if(r == NULL || adapters.empty())
+        return out;
+
+    int readLen = r->length();
+    vector<pair<int, int>> adapterRegions;
+    int searchStart = 0;
+    while(searchStart < readLen) {
+        int adapterStart = -1;
+        int adapterLength = 0;
+        if(!findNextMiddleAdapter(r, adapters, searchStart, adapterStart, adapterLength, edMax))
+            break;
+        int regionStart = max(0, adapterStart - trimmingExtension);
+        int regionEnd = min(readLen - 1, adapterStart + adapterLength + trimmingExtension - 1);
+        if(adapterRegions.empty() || regionStart > adapterRegions.back().second + 1) {
+            adapterRegions.push_back(make_pair(regionStart, regionEnd));
+        } else {
+            adapterRegions.back().second = max(adapterRegions.back().second, regionEnd);
+        }
+        searchStart = adapterStart + max(1, adapterLength);
+    }
+
+    if(adapterRegions.empty()) {
+        out.push_back(r);
+        return out;
+    }
+
+    int removed = 0;
+    int segmentIndex = 1;
+    int lastEnd = -1;
+    for(size_t i=0; i<adapterRegions.size(); i++) {
+        int start = max(0, adapterRegions[i].first);
+        int end = min(readLen - 1, adapterRegions[i].second);
+        if(start > lastEnd + 1) {
+            int len = start - lastEnd - 1;
+            if(len >= minSegmentLength) {
+                string* seq = new string(*r->mSeq, lastEnd + 1, len);
+                string* qual = new string(*r->mQuality, lastEnd + 1, len);
+                string* name = new string(*r->mName);
+                name->insert(1, "chimera-segment-" + to_string(segmentIndex) + "-");
+                string* strand = new string(*r->mStrand);
+                out.push_back(new Read(name, seq, strand, qual));
+                segmentIndex++;
+            } else {
+                removed += len;
+            }
+        }
+        removed += end - start + 1;
+        lastEnd = max(lastEnd, end);
+    }
+    if(lastEnd < readLen - 1) {
+        int len = readLen - lastEnd - 1;
+        if(len >= minSegmentLength) {
+            string* seq = new string(*r->mSeq, lastEnd + 1, len);
+            string* qual = new string(*r->mQuality, lastEnd + 1, len);
+            string* name = new string(*r->mName);
+            name->insert(1, "chimera-segment-" + to_string(segmentIndex) + "-");
+            string* strand = new string(*r->mStrand);
+            out.push_back(new Read(name, seq, strand, qual));
+        } else {
+            removed += len;
+        }
+    }
+
+    if(removedBases)
+        *removedBases = removed;
+    if(fr)
+        fr->addChimericRead(removed, out.size());
+    return out;
+}
+
 int AdapterTrimmer::trimByMultiSequences(Read* r, FilterResult* fr, vector<string>& adapterList, double edMax, int trimmingExtension) {
     int matchReq = 4;
     if(adapterList.size() > 16)

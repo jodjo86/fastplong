@@ -12,6 +12,9 @@ FilterResult::FilterResult(Options* opt, bool paired){
     mSamplingDroppedBases = 0;
     mBestReadSegmentTrimmedReads = 0;
     mBestReadSegmentTrimmedBases = 0;
+    mChimericReads = 0;
+    mChimeraRemovedBases = 0;
+    mChimeraProducedSegments = 0;
     for(int i=0; i<FILTER_RESULT_TYPES; i++) {
         mFilterReadStats[i] = 0;
     }
@@ -47,6 +50,9 @@ FilterResult* FilterResult::merge(vector<FilterResult*>& list) {
         result->mSamplingDroppedBases += list[i]->mSamplingDroppedBases;
         result->mBestReadSegmentTrimmedReads += list[i]->mBestReadSegmentTrimmedReads;
         result->mBestReadSegmentTrimmedBases += list[i]->mBestReadSegmentTrimmedBases;
+        result->mChimericReads += list[i]->mChimericReads;
+        result->mChimeraRemovedBases += list[i]->mChimeraRemovedBases;
+        result->mChimeraProducedSegments += list[i]->mChimeraProducedSegments;
         result->mBestReadCandidates.insert(result->mBestReadCandidates.end(), list[i]->mBestReadCandidates.begin(), list[i]->mBestReadCandidates.end());
 
         for(int b=0; b<4; b++) {
@@ -105,6 +111,14 @@ void FilterResult::addBestReadSegmentTrimmed(int bases) {
     mBestReadSegmentTrimmedBases += bases;
 }
 
+void FilterResult::addChimericRead(int removedBases, int producedSegments) {
+    mChimericReads++;
+    if(removedBases > 0)
+        mChimeraRemovedBases += removedBases;
+    if(producedSegments > 0)
+        mChimeraProducedSegments += producedSegments;
+}
+
 long FilterResult::getTotalPolyXTrimmedReads() {
   long sum_reads = 0;
   for(int b = 0; b < 4; b++)
@@ -152,6 +166,13 @@ void FilterResult::print() {
     if(mOptions->adapter.enabled) {
         cerr <<  "reads with adapter trimmed: " << mTrimmedAdapterRead << endl;
         cerr <<  "bases trimmed due to adapters: " << mTrimmedAdapterBases << endl;
+        if(mOptions->adapter.splitChimera) {
+            cerr <<  "reads with internal adapters/chimeric signals: " << mChimericReads << endl;
+            cerr <<  "bases removed by chimera splitting: " << mChimeraRemovedBases << endl;
+            cerr <<  "segments produced by chimera splitting: " << mChimeraProducedSegments << endl;
+            if(mOptions->adapter.discardChimera)
+                cerr <<  "reads failed due to chimeric adapters: " << mFilterReadStats[FAIL_CHIMERA] << endl;
+        }
     }
     if(mOptions->polyXTrim.enabled) {
         cerr <<  "reads with polyX in 3' end: " << getTotalPolyXTrimmedReads() << endl;
@@ -171,6 +192,16 @@ void FilterResult::reportJson(ofstream& ofs, string padding) {
         ofs << padding << "\t" << "\"low_complexity_reads\": " << mFilterReadStats[FAIL_COMPLEXITY] << "," << endl;
     ofs << padding << "\t" << "\"too_short_reads\": " << mFilterReadStats[FAIL_LENGTH] << "," << endl;
     ofs << padding << "\t" << "\"too_long_reads\": " << mFilterReadStats[FAIL_TOO_LONG];
+    if(mOptions->adapter.enabled && mOptions->adapter.splitChimera) {
+        ofs << "," << endl;
+        ofs << padding << "\t" << "\"chimeric_reads\": " << mChimericReads << "," << endl;
+        ofs << padding << "\t" << "\"chimera_removed_bases\": " << mChimeraRemovedBases << "," << endl;
+        ofs << padding << "\t" << "\"chimera_produced_segments\": " << mChimeraProducedSegments;
+        if(mOptions->adapter.discardChimera) {
+            ofs << "," << endl;
+            ofs << padding << "\t" << "\"chimeric_failed_reads\": " << mFilterReadStats[FAIL_CHIMERA];
+        }
+    }
     if(mOptions->sampling.enabled) {
         ofs << "," << endl;
         ofs << padding << "\t" << "\"sampling_dropped_reads\": " << mSamplingDroppedReads << "," << endl;
@@ -240,6 +271,12 @@ void FilterResult::reportAdapterJson(ofstream& ofs, string padding) {
     ofs << padding << "\t" << "\"read_adapter_counts\": " << "{";
         outputAdaptersJson(ofs, mAdapter);
     ofs << "}";
+    if(mOptions->adapter.splitChimera) {
+        ofs << "," << endl;
+        ofs << padding << "\t" << "\"chimeric_reads\": " << mChimericReads << "," << endl;
+        ofs << padding << "\t" << "\"chimera_removed_bases\": " << mChimeraRemovedBases << "," << endl;
+        ofs << padding << "\t" << "\"chimera_produced_segments\": " << mChimeraProducedSegments;
+    }
     ofs << endl;
 
     ofs << padding << "}," << endl;
@@ -315,12 +352,21 @@ void FilterResult::reportHtml(ofstream& ofs, long totalReads, long totalBases) {
         HtmlReporter::outputRow(ofs, "reads trimmed by best-read-segment mode:", HtmlReporter::formatNumber(mBestReadSegmentTrimmedReads));
         HtmlReporter::outputRow(ofs, "bases trimmed by best-read-segment mode:", HtmlReporter::formatNumber(mBestReadSegmentTrimmedBases) + " (" + HtmlReporter::getPercents(mBestReadSegmentTrimmedBases, totalBases) + "%)");
     }
+    if(mOptions->adapter.enabled && mOptions->adapter.splitChimera && mOptions->adapter.discardChimera)
+        HtmlReporter::outputRow(ofs, "reads failed due to chimeric adapters:", HtmlReporter::formatNumber(mFilterReadStats[FAIL_CHIMERA]) + " (" + to_string(mFilterReadStats[FAIL_CHIMERA] * 100.0 / total) + "%)");
     ofs << "</table>\n";
 }
 
 void FilterResult::reportAdapterHtml(ofstream& ofs, long totalBases) {
     ofs << "<div class='subsection_title' onclick=showOrHide('read1_adapters')>Adapter or bad ligation of read1</div>\n";
     ofs << "<div id='read1_adapters'>\n";
+    if(mOptions->adapter.splitChimera) {
+        ofs << "<table class='summary_table'>\n";
+        HtmlReporter::outputRow(ofs, "reads with internal adapters/chimeric signals:", HtmlReporter::formatNumber(mChimericReads));
+        HtmlReporter::outputRow(ofs, "bases removed by chimera splitting:", HtmlReporter::formatNumber(mChimeraRemovedBases) + " (" + HtmlReporter::getPercents(mChimeraRemovedBases, totalBases) + "%)");
+        HtmlReporter::outputRow(ofs, "segments produced by chimera splitting:", HtmlReporter::formatNumber(mChimeraProducedSegments));
+        ofs << "</table>\n";
+    }
     outputAdaptersHtml(ofs, mAdapter, totalBases);
     ofs << "</div>\n";
 }

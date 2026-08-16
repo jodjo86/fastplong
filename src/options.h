@@ -206,6 +206,9 @@ public:
         detected = false;
         trimmingExtension = 10;
         edMax = 0.25;
+        splitChimera = true;
+        discardChimera = false;
+        chimeraMinSegmentLength = 20;
     }
 public:
     bool enabled;
@@ -219,6 +222,12 @@ public:
     int trimmingExtension;
     // the threshold of edit_distance/match_length, suggest (0.1 ~ 0.3)
     double edMax;
+    // split reads containing internal adapters
+    bool splitChimera;
+    // discard reads containing internal adapters instead of splitting
+    bool discardChimera;
+    // minimum segment length retained after splitting internal adapters
+    int chimeraMinSegmentLength;
 };
 
 class TrimmingOptions {

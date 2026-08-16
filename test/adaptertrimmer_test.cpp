@@ -55,3 +55,41 @@ TEST(AdapterTrimmer, searchAdapterLeft2) {
         read.mSeq, adapter, 0.3, 0, -1, true, false);
     EXPECT_EQ(pos, 4);
 }
+
+TEST(AdapterTrimmer, splitByMiddleAdapters) {
+    Read read("@name",
+        "AAAACCCCGGGGTTTTCCCCGGGGAAAA",
+        "+",
+        "EEEEEEEEEEEEEEEEEEEEEEEEEEEE");
+    vector<string> adapters;
+    adapters.push_back("CCCCGGGG");
+    int removedBases = 0;
+
+    vector<Read*> segments = AdapterTrimmer::splitByMiddleAdapters(&read, NULL, adapters, 0.0, 0, 4, &removedBases);
+
+    ASSERT_EQ(segments.size(), 3u);
+    EXPECT_EQ(*segments[0]->mSeq, "AAAA");
+    EXPECT_EQ(*segments[1]->mSeq, "TTTT");
+    EXPECT_EQ(*segments[2]->mSeq, "AAAA");
+    EXPECT_EQ(*segments[0]->mName, "@chimera-segment-1-name");
+    EXPECT_EQ(*segments[1]->mName, "@chimera-segment-2-name");
+    EXPECT_EQ(*segments[2]->mName, "@chimera-segment-3-name");
+    EXPECT_EQ(removedBases, 16);
+
+    for(size_t i=0; i<segments.size(); i++)
+        delete segments[i];
+}
+
+TEST(AdapterTrimmer, splitByMiddleAdaptersNoMatchReturnsOriginal) {
+    Read read("@name",
+        "AAAATTTTAAAA",
+        "+",
+        "EEEEEEEEEEEE");
+    vector<string> adapters;
+    adapters.push_back("CCCCGGGG");
+
+    vector<Read*> segments = AdapterTrimmer::splitByMiddleAdapters(&read, NULL, adapters, 0.0, 0, 4);
+
+    ASSERT_EQ(segments.size(), 1u);
+    EXPECT_EQ(segments[0], &read);
+}

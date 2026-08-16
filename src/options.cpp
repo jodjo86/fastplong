@@ -270,6 +270,10 @@ bool Options::validate() {
     if(adapter.trimmingExtension <0 || adapter.trimmingExtension > 100) {
         error_exit("the adapter <trimming_extension> should be 0 ~ 100, suggest 5 ~ 30");
     }
+    if(adapter.chimeraMinSegmentLength < 1)
+        error_exit("chimera minimum segment length (--chimera_min_segment_length) should be greater than 0");
+    if(adapter.discardChimera && !adapter.splitChimera)
+        error_exit("--discard_chimeric_reads cannot work together with --disable_chimera_splitting");
 
 
     return true;

@@ -39,6 +39,7 @@ public:
     void addSamplingDropped(int bases);
     void addBestReadCandidate(unsigned long long key, double score, int length);
     void addBestReadSegmentTrimmed(int bases);
+    void addChimericRead(int removedBases, int producedSegments);
     long getSamplingDroppedReads() {return mSamplingDroppedReads;}
     long getSamplingDroppedBases() {return mSamplingDroppedBases;}
     vector<BestReadRecord>& getBestReadCandidates() {return mBestReadCandidates;}
@@ -68,6 +69,9 @@ private:
     long mSamplingDroppedBases;
     long mBestReadSegmentTrimmedReads;
     long mBestReadSegmentTrimmedBases;
+    long mChimericReads;
+    long mChimeraRemovedBases;
+    long mChimeraProducedSegments;
     vector<BestReadRecord> mBestReadCandidates;
     long mTrimmedPolyXReads[4] = {0};
     long mTrimmedPolyXBases[4] = {0};

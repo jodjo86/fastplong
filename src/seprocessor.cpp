@@ -6,6 +6,7 @@
 #include <thread>
 #include <memory.h>
 #include <stdint.h>
+#include <algorithm>
 #include "util.h"
 #include "jsonreporter.h"
 #include "htmlreporter.h"
@@ -230,6 +231,22 @@ static double meanReadQuality(Read* r) {
     return (double)total / (double)qual->size();
 }
 
+static void addChimeraAdapter(vector<string>& adapters, const string& adapter) {
+    if(adapter.empty() || adapter == "auto")
+        return;
+    if(find(adapters.begin(), adapters.end(), adapter) == adapters.end())
+        adapters.push_back(adapter);
+}
+
+static vector<string> getChimeraAdapters(Options* options) {
+    vector<string> adapters;
+    addChimeraAdapter(adapters, options->adapter.sequenceStart);
+    addChimeraAdapter(adapters, options->adapter.sequenceEnd);
+    for(size_t i=0; i<options->adapter.seqsInFasta.size(); i++)
+        addChimeraAdapter(adapters, options->adapter.seqsInFasta[i]);
+    return adapters;
+}
+
 bool SingleEndProcessor::shallKeepBySampling(Read* r) {
     if(!mOptions->sampling.enabled || mOptions->sampling.evaluating)
         return true;
@@ -258,6 +275,12 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
     string* outstr = new string();
     string* failedOut = new string();
     int tid = config->getThreadId();
+    vector<string> chimeraAdapters;
+    bool chimeraDetectionEnabled = false;
+    if(mOptions->adapter.enabled && mOptions->adapter.splitChimera) {
+        chimeraAdapters = getChimeraAdapters(mOptions);
+        chimeraDetectionEnabled = !chimeraAdapters.empty();
+    }
 
     int readPassed = 0;
     for(int p=0;p<pack->count;p++){
@@ -278,6 +301,7 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
         }
 
         vector<Read*> outReads;
+        int forcedFilterResult = PASS_FILTER;
 
         if(r1 != NULL && mOptions->adapter.enabled){
             int trimmed = 0;
@@ -292,15 +316,25 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
                 config->getFilterResult()->addReadTrimmed(trimmed);
             }
 
-            //search for middle adapter
-            int start = -1;
-            int len = 0;
-            bool foundMiddleAdapter = AdapterTrimmer::findMiddleAdapters(r1, mOptions->adapter.sequenceStart, mOptions->adapter.sequenceEnd, start, len, mOptions->adapter.edMax,mOptions->adapter.trimmingExtension);
-            if(foundMiddleAdapter) {
-                //break the read
-                outReads = r1->breakByGap(start, len);
-                //cerr << "break at " << start << ", " << len << ", read len: " << r1->length() << endl;
-                //cerr << r1->mSeq->substr(start, len) << endl;
+            if(chimeraDetectionEnabled) {
+                if(mOptions->adapter.discardChimera) {
+                    int start = -1;
+                    int len = 0;
+                    bool foundMiddleAdapter = AdapterTrimmer::findNextMiddleAdapter(r1, chimeraAdapters, 0, start, len, mOptions->adapter.edMax);
+                    if(foundMiddleAdapter) {
+                        int regionStart = max(0, start - mOptions->adapter.trimmingExtension);
+                        int regionEnd = min(r1->length() - 1, start + len + mOptions->adapter.trimmingExtension - 1);
+                        config->getFilterResult()->addChimericRead(regionEnd - regionStart + 1, 0);
+                        forcedFilterResult = FAIL_CHIMERA;
+                    }
+                    outReads.push_back(r1);
+                } else {
+                    outReads = AdapterTrimmer::splitByMiddleAdapters(r1, config->getFilterResult(), chimeraAdapters, mOptions->adapter.edMax, mOptions->adapter.trimmingExtension, mOptions->adapter.chimeraMinSegmentLength);
+                    if(outReads.empty()) {
+                        forcedFilterResult = FAIL_CHIMERA;
+                        outReads.push_back(r1);
+                    }
+                }
             } else {
                 outReads.push_back(r1);
             }
@@ -309,7 +343,7 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
         }
 
         // keep only the best high-quality segment for each processed read
-        if(mOptions->bestReadSegment.enabled && outReads.size() > 0) {
+        if(forcedFilterResult == PASS_FILTER && mOptions->bestReadSegment.enabled && outReads.size() > 0) {
             vector<Read*> tmpReads;
             for(int i=0; i<outReads.size(); i++) {
                 Read* rr = outReads[i];
@@ -326,7 +360,7 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
         }
 
         //break by low quality regions
-        if(mOptions->breakOpt.enabled && outReads.size() > 0) {
+        if(forcedFilterResult == PASS_FILTER && mOptions->breakOpt.enabled && outReads.size() > 0) {
             vector<Read*> tmpReads;
             for(int i=0; i<outReads.size(); i++) {
                 Read* rr = outReads[i];
@@ -345,7 +379,7 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
             outReads = tmpReads;
         }
         // mask by low quality regions
-        if(mOptions->mask.enabled && outReads.size() > 0) {
+        if(forcedFilterResult == PASS_FILTER && mOptions->mask.enabled && outReads.size() > 0) {
             for(int i=0; i<outReads.size(); i++) {
                 Read* rr = outReads[i];
                 vector<pair<int, int>> regions = mFilter->detectLowQualityRegions(rr, mOptions->mask.windowSize, mOptions->mask.quality);
@@ -360,7 +394,7 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
             for(int i=0; i<outReads.size(); i++) {
 
                 Read* outr = outReads[i];
-                int result = mFilter->passFilter(outr);
+                int result = forcedFilterResult == PASS_FILTER ? mFilter->passFilter(outr) : forcedFilterResult;
 
                 config->addFilterResult(result, 1);
 
@@ -382,7 +416,7 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
             for(int i=0; i<outReads.size(); i++) {
 
                 Read* outr = outReads[i];
-                int result = mFilter->passFilter(outr);
+                int result = forcedFilterResult == PASS_FILTER ? mFilter->passFilter(outr) : forcedFilterResult;
 
                 if( outr != NULL &&  result == PASS_FILTER) {
                     unsigned long long key = makeTopReadSelectionKey(pack->start + p, i);
@@ -416,7 +450,7 @@ bool SingleEndProcessor::processSingleEnd(ReadPack* pack, ThreadConfig* config){
             for(int i=0; i<outReads.size(); i++) {
 
                 Read* outr = outReads[i];
-                int result = mFilter->passFilter(outr);
+                int result = forcedFilterResult == PASS_FILTER ? mFilter->passFilter(outr) : forcedFilterResult;
 
                 if( outr != NULL &&  result == PASS_FILTER) {
                     if(shallKeepBySampling(outr)) {

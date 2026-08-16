@@ -193,6 +193,10 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
 * to make a cleaner trimming, fastplong will trim a little more bases connected to the adapters. This option can be specified by `--trimming_extension`, with a default value of 10.
 
+* fastplong also scans internal adapter matches after end trimming to handle possible chimeric reads or bad ligation products. By default, reads with internal adapters are split into clean segments and the adapter region is removed. Use `--chimera_min_segment_length` to control the shortest segment to keep after splitting.
+
+* If you prefer to remove suspicious chimeric reads entirely, use `--discard_chimeric_reads`. To keep reads intact after end trimming, use `--disable_chimera_splitting`.
+
 # per read cutting by quality score
 `fastplong` supports per read sliding window cutting by evaluating the mean quality scores in the sliding window. `fastplong` supports 2 different operations, and you enable one or both:
 * `-5, --cut_front`             move a sliding window from front (5') to tail, drop the bases in the window if its mean quality is below cut_mean_quality, stop otherwise. Default is disabled. The leading N bases are also trimmed. Use `cut_front_window_size` to set the widnow size, and `cut_front_mean_quality` to set the mean quality threshold. If the window size is 1, this is similar as the Trimmomatic `LEADING` method.
@@ -280,6 +284,9 @@ options:
   -a, --adapter_fasta                specify a FASTA file to trim both read by all the sequences in this FASTA file (string [=])
   -d, --distance_threshold           threshold of sequence-adapter-distance/adapter-length (0.0 ~ 1.0), greater value means more adapters detected (double [=0.25])
       --trimming_extension           when an adapter is detected, extend the trimming to make cleaner trimming, default 10 means trimming 10 bases more (int [=10])
+      --disable_chimera_splitting    disable splitting reads by internal adapters/chimeric ligation signals.
+      --discard_chimeric_reads       discard reads containing internal adapters instead of splitting them into segments.
+      --chimera_min_segment_length   minimum segment length retained after splitting internal adapters, default: 20 (int [=20])
   -f, --trim_front                   trimming how many bases in front for read, default is 0 (int [=0])
   -t, --trim_tail                    trimming how many bases in tail for read, default is 0 (int [=0])
   -x, --trim_poly_x                  enable polyX trimming in 3' ends.
