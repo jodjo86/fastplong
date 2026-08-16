@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#define FASTPLONG_VER "0.6.0"
+#define FASTPLONG_VER "0.7.0"
 
 #define _DEBUG false
 
